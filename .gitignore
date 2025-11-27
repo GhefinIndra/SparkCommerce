@@ -1,0 +1,34 @@
+# Root Project .gitignore
+
+# Documentation files (gunakan README.md untuk dokumentasi utama)
+AUDIT_REPORT.md
+DASHBOARD_SYNC_IMPLEMENTATION.md
+IMPLEMENTATION_SUMMARY.md
+SHOPEE_CREATE_PRODUCT_IMPLEMENTATION.md
+STOCK_UPDATE_FIX.md
+TESTING_NOTES.md
+UI_UPDATES_SUMMARY.md
+VERIFICATION_REPORT.md
+WEIGHT_UNIT_FIX.md
+
+# Database files (jangan push database dengan data)
+*.sql
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+nul
+*.tmp
+*.temp
+
+# Claude AI files
+.claude/
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# IDE specific
+.vscode/
+.idea/
