@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SparkCommerce Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <h1> SparkCommerce Dashboard</h1>
+            <p class="subtitle">Transaction Monitoring System</p>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="container">
+
+        <!-- Stats Cards -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon"></div>
+                <div class="stat-content">
+                    <h3 id="totalTransactions">0</h3>
+                    <p>Total Transaksi</p>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon"></div>
+                <div class="stat-content">
+                    <h3 id="totalRevenue">Rp 0</h3>
+                    <p>Total Revenue</p>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon"></div>
+                <div class="stat-content">
+                    <h3 id="tiktokCount">0</h3>
+                    <p>TikTok Orders</p>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon"></div>
+                <div class="stat-content">
+                    <h3 id="shopeeCount">0</h3>
+                    <p>Shopee Orders</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters-container">
+            <div class="filter-group">
+                <label for="filterPlatform">Platform:</label>
+                <select id="filterPlatform" onchange="filterTransactions()">
+                    <option value="">Semua Platform</option>
+                    <option value="TIKTOK">TikTok</option>
+                    <option value="SHOPEE">Shopee</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label for="filterShop">Toko:</label>
+                <select id="filterShop" onchange="filterTransactions()">
+                    <option value="">Semua Toko</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label for="searchOrder">Cari Order ID:</label>
+                <input type="text" id="searchOrder" placeholder="Ketik order ID..." onkeyup="filterTransactions()">
+            </div>
+
+            <div class="filter-actions">
+                <button class="btn-refresh" onclick="loadData()">
+                    <span id="refreshIcon"></span> Refresh
+                </button>
+                <label class="auto-refresh-toggle">
+                    <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()" checked>
+                    Auto Refresh (10s)
+                </label>
+            </div>
+        </div>
+
+        <!-- Transactions Table -->
+        <div class="table-container">
+            <h2> Daftar Transaksi</h2>
+
+            <div class="table-wrapper">
+                <table class="transactions-table">
+                    <thead>
+                        <tr>
+                            <th>No</th>
+                            <th>Order ID</th>
+                            <th>Platform</th>
+                            <th>Shop ID</th>
+                            <th>Status</th>
+                            <th>Total</th>
+                            <th>Items</th>
+                            <th>Tanggal</th>
+                            <th>Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transactionsBody">
+                        <tr>
+                            <td colspan="9" class="loading">
+                                <div class="spinner"></div>
+                                Memuat data...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="noData" class="no-data" style="display: none;">
+                <div class="no-data-icon"></div>
+                <p>Belum ada transaksi</p>
+                <small>Transaksi akan muncul ketika ada order baru dari aplikasi</small>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Transaction Detail Modal -->
+    <div id="detailModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2> Detail Transaksi</h2>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Detail will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>
+            SparkCommerce Dashboard v1.0.0 |
+            Last Update: <span id="lastUpdate">-</span> |
+            <span id="connectionStatus" class="status-connected"> Connected</span>
+        </p>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
