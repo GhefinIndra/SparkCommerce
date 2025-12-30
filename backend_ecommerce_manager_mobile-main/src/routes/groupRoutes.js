@@ -20,14 +20,13 @@ router.get('/:gid', authenticateUserToken, async (req, res) => {
       });
     }
 
-    // Return group info (without sensitive secret in response - will be sent in headers during webhook)
+    // Return group info (do NOT expose secret to clients)
     res.json({
       success: true,
       data: {
         GID: group.GID,
         nama_group: group.nama_group,
         url: group.url,
-        secret: group.secret, // Frontend needs this to send with webhook
         created_at: group.created_at,
         updated_at: group.updated_at,
       },

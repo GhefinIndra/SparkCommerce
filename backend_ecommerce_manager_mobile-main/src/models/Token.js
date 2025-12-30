@@ -1,6 +1,7 @@
 // models/Token.js
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/sequelize");
+const { encrypt, decrypt } = require("../utils/encryption");
 
 const Token = sequelize.define(
   "Token",
@@ -34,10 +35,24 @@ const Token = sequelize.define(
     access_token: {
       type: DataTypes.TEXT,
       allowNull: false,
+      get() {
+        const raw = this.getDataValue("access_token");
+        return decrypt(raw);
+      },
+      set(value) {
+        this.setDataValue("access_token", encrypt(value));
+      },
     },
     refresh_token: {
       type: DataTypes.TEXT,
       allowNull: true,
+      get() {
+        const raw = this.getDataValue("refresh_token");
+        return decrypt(raw);
+      },
+      set(value) {
+        this.setDataValue("refresh_token", encrypt(value));
+      },
     },
     open_id: {
       type: DataTypes.STRING(255),

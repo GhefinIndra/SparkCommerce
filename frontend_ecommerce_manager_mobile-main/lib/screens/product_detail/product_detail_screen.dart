@@ -594,41 +594,42 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     if (product.categoryChains.isNotEmpty) filledFields++;
     if (product.brand != null) filledFields++;
 
-    double percentage = filledFields / totalFields;
+    double percentage = (filledFields / totalFields).clamp(0.0, 1.0);
 
-    return Container(
-      height: 8,
-      decoration: BoxDecoration(
-        color: Colors.grey[200],
-      ),
-      child: Row(
-        children: [
-          // Light green part
-          Expanded(
-            flex: (percentage * 50).toInt(),
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF8BC34A), Color(0xFF9CCC65)],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final fillWidth = constraints.maxWidth * percentage;
+
+        return Container(
+          height: 8,
+          decoration: BoxDecoration(
+            color: Color(0xFFE8EAF6),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Stack(
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  color: Color(0xFFE8EAF6),
+                  borderRadius: BorderRadius.circular(8),
                 ),
               ),
-            ),
+              Container(
+                width: fillWidth,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Color(0xFF1A237E),
+                      Color(0xFF3949AB),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ],
           ),
-          // Dark green part
-          Expanded(
-            flex: (percentage * 50).toInt(),
-            child: Container(
-              color: Color(0xFF558B2F),
-            ),
-          ),
-          // Empty part
-          if (percentage < 1.0)
-            Expanded(
-              flex: ((1 - percentage) * 100).toInt(),
-              child: Container(color: Colors.grey[200]),
-            ),
-        ],
-      ),
+        );
+      },
     );
   }
 

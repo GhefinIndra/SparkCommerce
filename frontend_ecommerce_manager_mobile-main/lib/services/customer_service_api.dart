@@ -1,11 +1,41 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/conversation.dart';
+import '../services/auth_service.dart';
+import '../utils/app_config.dart';
 
 class CustomerServiceApiService {
-  static String get baseUrl => '${dotenv.env['BASE_URL'] ?? 'http://10.0.2.2:5000'}/api/customer-service';
+  static String get baseUrl => '${AppConfig.apiBaseUrl}/customer-service';
+
+  static Future<Map<String, String>> _getAuthHeaders() async {
+    final headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+
+    final authService = AuthService();
+    String? token;
+
+    if (authService.currentUser != null &&
+        authService.currentUser!.authToken.isNotEmpty) {
+      token = authService.currentUser!.authToken;
+    } else {
+      final prefs = await SharedPreferences.getInstance();
+      final currentEmail = prefs.getString('current_user_email');
+      if (currentEmail != null) {
+        token = await authService.getStoredAuthToken(currentEmail);
+      }
+    }
+
+    if (token != null && token.isNotEmpty) {
+      headers['auth_token'] = token;
+    }
+
+    return headers;
+  }
+
   static Future<Map<String, dynamic>> getConversations(
     String shopId, {
     int pageSize = 20,
@@ -22,7 +52,7 @@ class CustomerServiceApiService {
       final uri = Uri.parse('$baseUrl/$shopId/conversations')
           .replace(queryParameters: queryParams);
 
-      final response = await http.get(uri);
+      final response = await http.get(uri, headers: await _getAuthHeaders());
       final data = jsonDecode(response.body);
 
       if (response.statusCode == 200 && data['success']) {
@@ -63,7 +93,7 @@ class CustomerServiceApiService {
           Uri.parse('$baseUrl/$shopId/conversations/$conversationId/messages')
               .replace(queryParameters: queryParams);
 
-      final response = await http.get(uri);
+      final response = await http.get(uri, headers: await _getAuthHeaders());
       final data = jsonDecode(response.body);
 
       if (response.statusCode == 200 && data['success']) {
@@ -92,7 +122,7 @@ class CustomerServiceApiService {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/$shopId/conversations'),
-        headers: {'Content-Type': 'application/json'},
+        headers: await _getAuthHeaders(),
         body: jsonEncode({
           'buyer_user_id': buyerUserId,
         }),
@@ -123,7 +153,7 @@ class CustomerServiceApiService {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/$shopId/conversations/$conversationId/messages'),
-        headers: {'Content-Type': 'application/json'},
+        headers: await _getAuthHeaders(),
         body: jsonEncode({
           'type': type,
           'content': content,
@@ -153,7 +183,7 @@ class CustomerServiceApiService {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/$shopId/conversations/$conversationId/read'),
-        headers: {'Content-Type': 'application/json'},
+        headers: await _getAuthHeaders(),
       );
 
       final data = jsonDecode(response.body);
@@ -178,6 +208,10 @@ class CustomerServiceApiService {
         'POST',
         Uri.parse('$baseUrl/$shopId/images/upload'),
       );
+
+      final headers = await _getAuthHeaders();
+      headers.remove('Content-Type');
+      request.headers.addAll(headers);
 
       request.files.add(
         await http.MultipartFile.fromPath('data', imageFile.path),

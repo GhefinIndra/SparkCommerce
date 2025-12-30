@@ -123,9 +123,16 @@ exports.authorize = (req, res) => {
     let authUrl =
       `https://auth.tiktok-shops.com/oauth/authorize?` +
       `app_key=${config.tiktok.appKey}&` +
+      `response_type=code&` +
       `state=${user_token || "no_user"}&` +
       `redirect_uri=${encodeURIComponent(config.tiktok.redirectUri)}`;
 
+    if (config.tiktok.scopes) {
+      authUrl += `&scope=${encodeURIComponent(config.tiktok.scopes)}`;
+    }
+
+    console.log("🔗 Generated auth URL:", authUrl);
+    console.log("📍 Redirect URI:", config.tiktok.redirectUri);
     console.log(" Redirecting to TikTok OAuth...");
     res.redirect(authUrl);
   } catch (error) {
@@ -253,15 +260,18 @@ exports.callback = async (req, res) => {
         );
       }
 
-      const successUrl = `${config.server.clientUrl}/success?openId=${responseData.open_id}&seller=${encodeURIComponent(responseData.seller_name)}`;
-      res.redirect(successUrl);
+      // Redirect to success page (WebView will detect /success URL)
+      res.redirect(
+        `${config.server.clientUrl}/success?platform=tiktok&shopId=${responseData.shop_id || ''}&openId=${responseData.open_id}&seller=${encodeURIComponent(responseData.seller_name)}`
+      );
     } else {
       throw new Error(`TikTok API Error: ${data.message || "Unknown error"}`);
     }
   } catch (error) {
     console.error(" OAuth Callback Error:", error.message);
+    // Redirect to error page (WebView will detect /error URL)
     res.redirect(
-      `${config.server.clientUrl}/error?message=${encodeURIComponent(error.message)}`,
+      `${config.server.clientUrl}/error?message=${encodeURIComponent(error.message)}`
     );
   }
 };
@@ -610,6 +620,75 @@ exports.getShopInfo = async (req, res) => {
     res.json({ success: true, data: shopData });
   } catch (error) {
     console.error(" Error fetching shop info:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+// Delete shop (remove from DB and user relations)
+exports.deleteShop = async (req, res) => {
+  try {
+    const { shopId } = req.params;
+
+    const authToken =
+      req.headers.auth_token ||
+      req.headers["auth-token"] ||
+      req.headers.authorization?.replace("Bearer ", "");
+
+    if (!authToken || authToken === "none" || authToken === "null") {
+      return res.status(401).json({
+        success: false,
+        message: "Auth token required",
+      });
+    }
+
+    const user = await getUserFromAuthToken(authToken);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid or expired token",
+      });
+    }
+
+    // Ensure user owns/has access to the shop
+    const relation = await UserShop.findOne({
+      where: {
+        user_id: user.id,
+        shop_id: shopId,
+        status: "active",
+      },
+    });
+
+    if (!relation) {
+      return res.status(403).json({
+        success: false,
+        message: "Anda tidak memiliki akses ke toko ini",
+      });
+    }
+
+    const deletedRelations = await UserShop.destroy({
+      where: { shop_id: shopId },
+    });
+
+    // Hapus token apa pun untuk shop_id ini (fallback tanpa platform filter agar tidak tersisa data)
+    const deletedTokens = await Token.destroy({
+      where: { shop_id: shopId },
+    });
+
+    res.json({
+      success: true,
+      message: "Toko berhasil dihapus dari database",
+      data: {
+        shop_id: shopId,
+        removed_relations: deletedRelations,
+        removed_tokens: deletedTokens,
+      },
+    });
+  } catch (error) {
+    console.error(" Error deleting shop:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",

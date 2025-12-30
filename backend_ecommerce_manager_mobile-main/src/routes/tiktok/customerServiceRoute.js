@@ -2,6 +2,7 @@
 const express = require("express");
 const multer = require("multer");
 const customerServiceController = require("../../controllers/tiktok/customerServiceController");
+const { authenticateUserToken, verifyShopAccess } = require("../../middleware/auth");
 
 const router = express.Router();
 
@@ -36,36 +37,48 @@ const upload = multer({
 // Get conversations for a shop
 router.get(
   "/:shopId/conversations",
+  authenticateUserToken,
+  verifyShopAccess,
   customerServiceController.getConversations,
 );
 
 // Get messages from specific conversation
 router.get(
   "/:shopId/conversations/:conversationId/messages",
+  authenticateUserToken,
+  verifyShopAccess,
   customerServiceController.getMessages,
 );
 
 // Create new conversation
 router.post(
   "/:shopId/conversations",
+  authenticateUserToken,
+  verifyShopAccess,
   customerServiceController.createConversation,
 );
 
 // Send message to conversation
 router.post(
   "/:shopId/conversations/:conversationId/messages",
+  authenticateUserToken,
+  verifyShopAccess,
   customerServiceController.sendMessage,
 );
 
 // Mark messages as read
 router.post(
   "/:shopId/conversations/:conversationId/read",
+  authenticateUserToken,
+  verifyShopAccess,
   customerServiceController.readMessages,
 );
 
 // Upload image
 router.post(
   "/:shopId/images/upload",
+  authenticateUserToken,
+  verifyShopAccess,
   upload.single("data"),
   customerServiceController.uploadImage,
 );

@@ -755,6 +755,7 @@ class _ProductInfoWidgetState extends State<ProductInfoWidget>
             keyboardType: keyboardType,
             validator: validator,
             readOnly: readOnly,
+            onTapOutside: (_) => FocusScope.of(context).unfocus(),
             decoration: InputDecoration(
               hintText: hint,
               hintStyle: TextStyle(color: Colors.grey[500]),

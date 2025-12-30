@@ -42,6 +42,14 @@ class _CreateProductScreenState extends State<CreateProductScreen>
   final _formKey = GlobalKey<FormState>();
   final _scrollController = ScrollController();
 
+  // Section keys for auto-scroll
+  final GlobalKey _basicSectionKey = GlobalKey();
+  final GlobalKey _attributesSectionKey = GlobalKey();
+  final GlobalKey _detailSectionKey = GlobalKey();
+  final GlobalKey _rulesSectionKey = GlobalKey();
+  final GlobalKey _infoSectionKey = GlobalKey();
+  final GlobalKey _previewSectionKey = GlobalKey();
+
   // Animation controllers
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
@@ -235,9 +243,99 @@ class _CreateProductScreenState extends State<CreateProductScreen>
     }
   }
 
+  bool get _isBasicStepComplete {
+    final title = _formData.title.trim();
+    final titleValid = isShopee
+        ? (title.isNotEmpty && title.length <= 226)
+        : (title.length >= 25 && title.length <= 255);
+
+    return titleValid &&
+        _formData.selectedImages.isNotEmpty &&
+        _formData.isCategorySelected;
+  }
+
+  bool get _isDetailStepComplete {
+    return _formData.description.trim().isNotEmpty &&
+        _formData.areRequiredAttributesSelected &&
+        _formData.areCertificationsValid;
+  }
+
+  bool get _isShippingStepComplete {
+    final priceOk = _formData.price.trim().isNotEmpty;
+    final weightOk = _formData.weight.trim().isNotEmpty;
+    final dimsOk = _formData.arePackageDimensionsValid;
+    return priceOk && weightOk && dimsOk;
+  }
+
+  int get _currentStepIndex {
+    if (!_isBasicStepComplete) return 0;
+    if (!_isDetailStepComplete) return 1;
+    return 2;
+  }
+
+  double get _progressValue {
+    final completed = [
+      _isBasicStepComplete,
+      _isDetailStepComplete,
+      _isShippingStepComplete
+    ].where((step) => step).length;
+    return (completed / 3).clamp(0.0, 1.0);
+  }
+
+  Future<void> _scrollToSection(GlobalKey key) async {
+    final context = key.currentContext;
+    if (context == null) return;
+    await Scrollable.ensureVisible(
+      context,
+      duration: Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
+      alignment: 0.1,
+    );
+  }
+
+  void _scrollToFirstError() {
+    if (!_formData.isCategorySelected ||
+        _formData.selectedImages.isEmpty ||
+        _formData.title.trim().isEmpty) {
+      _scrollToSection(_basicSectionKey);
+      return;
+    }
+
+    if (!_formData.areRequiredAttributesSelected) {
+      _scrollToSection(_attributesSectionKey);
+      return;
+    }
+
+    if (_formData.description.trim().isEmpty) {
+      _scrollToSection(_detailSectionKey);
+      return;
+    }
+
+    if (!_formData.areCertificationsValid ||
+        !_formData.arePackageDimensionsValid) {
+      _scrollToSection(_rulesSectionKey);
+      return;
+    }
+
+    if (_formData.price.trim().isEmpty ||
+        _formData.weight.trim().isEmpty) {
+      _scrollToSection(_infoSectionKey);
+      return;
+    }
+
+    _scrollController.animateTo(
+      0,
+      duration: Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
+  }
+
   // Submit Product
   Future<void> _submitProduct() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      _scrollToFirstError();
+      return;
+    }
 
     if (!_formData.isFormValid) {
       String errorMessage = 'Form tidak valid';
@@ -257,6 +355,7 @@ class _CreateProductScreenState extends State<CreateProductScreen>
       // Size chart validation removed - handled by backend/TikTok API
 
       _showSnackBar(errorMessage, Colors.red);
+      _scrollToFirstError();
       return;
     }
 
@@ -636,6 +735,7 @@ class _CreateProductScreenState extends State<CreateProductScreen>
           child: Column(
             children: [
               _buildHeader(),
+              _buildStepIndicator(),
               Expanded(child: _buildBody()),
             ],
           ),
@@ -753,6 +853,105 @@ class _CreateProductScreenState extends State<CreateProductScreen>
     );
   }
 
+  Widget _buildStepIndicator() {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withOpacity(0.2)),
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                _buildStepChip(index: 0, label: 'Informasi Dasar'),
+                _buildStepConnector(),
+                _buildStepChip(index: 1, label: 'Detail'),
+                _buildStepConnector(),
+                _buildStepChip(index: 2, label: 'Pengiriman'),
+              ],
+            ),
+            SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                minHeight: 6,
+                value: _progressValue,
+                backgroundColor: Colors.white.withOpacity(0.2),
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStepConnector() {
+    return Expanded(
+      child: Container(
+        height: 2,
+        margin: EdgeInsets.symmetric(horizontal: 6),
+        color: Colors.white.withOpacity(0.4),
+      ),
+    );
+  }
+
+  Widget _buildStepChip({required int index, required String label}) {
+    final isCompleted = _progressValue >= (index + 1) / 3;
+    final isCurrent = _currentStepIndex == index;
+
+    Color chipColor;
+    Color textColor;
+
+    if (isCompleted) {
+      chipColor = Color(0xFF4CAF50);
+      textColor = Colors.white;
+    } else if (isCurrent) {
+      chipColor = Colors.white;
+      textColor = Color(0xFF1A237E);
+    } else {
+      chipColor = Colors.white.withOpacity(0.3);
+      textColor = Colors.white.withOpacity(0.7);
+    }
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: chipColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isCompleted)
+            Icon(Icons.check, size: 14, color: textColor)
+          else
+            Text(
+              '${index + 1}',
+              style: TextStyle(
+                color: textColor,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+          SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: textColor,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBody() {
     return FadeTransition(
       opacity: _fadeAnimation,
@@ -768,13 +967,27 @@ class _CreateProductScreenState extends State<CreateProductScreen>
           ),
           child: Form(
             key: _formKey,
-            child: ListView(
-              controller: _scrollController,
-              padding: EdgeInsets.all(20),
-              physics: ClampingScrollPhysics(),
-              children: [
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+              child: NotificationListener<ScrollNotification>(
+                onNotification: (notification) {
+                  if (notification is ScrollStartNotification ||
+                      notification is ScrollUpdateNotification) {
+                    FocusManager.instance.primaryFocus?.unfocus();
+                  }
+                  return false;
+                },
+                child: ListView(
+                  controller: _scrollController,
+                  padding: EdgeInsets.all(20),
+                  physics: ClampingScrollPhysics(),
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  children: [
           // 1. INFORMASI DASAR
           _buildSection(
+            sectionKey: _basicSectionKey,
             title: 'Informasi Dasar',
             children: [
               // Gambar Produk
@@ -822,51 +1035,14 @@ class _CreateProductScreenState extends State<CreateProductScreen>
 
           // Show loading for dependent widgets
           if (_isLoadingDependentWidgets)
-            Container(
-              margin: EdgeInsets.only(bottom: 20),
-              padding: EdgeInsets.all(40),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
-                    blurRadius: 20,
-                    offset: Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Center(
-                child: Column(
-                  children: [
-                    Container(
-                      width: 50,
-                      height: 50,
-                      child: CircularProgressIndicator(
-                        color: Color(0xFF2196F3),
-                        strokeWidth: 4,
-                      ),
-                    ),
-                    SizedBox(height: 20),
-                    Text(
-                      'Memuat form kategori...',
-                      style: TextStyle(
-                        color: Color(0xFF1A237E),
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      'Mohon tunggu sebentar',
-                      style: TextStyle(
-                        color: Colors.grey[600],
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
+            Column(
+              children: [
+                _buildSkeletonSection(
+                  title: isShopee ? 'Spesifikasi' : 'Atribut Produk',
                 ),
-              ),
+                _buildSkeletonSection(title: 'Detail Produk'),
+                _buildSkeletonSection(title: 'Info Penjualan & Pengiriman'),
+              ],
             ),
 
           // Show dependent widgets only when ready
@@ -875,6 +1051,7 @@ class _CreateProductScreenState extends State<CreateProductScreen>
               _formData.selectedCategoryId != null) ...[
             // Atribut Produk / Spesifikasi (untuk semua platform)
             _buildSection(
+              sectionKey: _attributesSectionKey,
               title: isShopee ? 'Spesifikasi' : 'Atribut Produk',
               child: DynamicAttributesWidget(
                 key: ValueKey(
@@ -887,11 +1064,12 @@ class _CreateProductScreenState extends State<CreateProductScreen>
             ),
 
             // 2. DETAIL PRODUK (with size chart)
-            _buildDetailProductSection(),
+            _buildDetailProductSection(sectionKey: _detailSectionKey),
 
             // TIKTOK-ONLY: Category Rules Section (Certifications, Package Dimensions, etc.)
             if (!isShopee) ...[
               _buildSection(
+                sectionKey: _rulesSectionKey,
                 title: 'Persyaratan Kategori',
                 child: CategoryRulesWidget(
                   key: ValueKey('category_rules_${_formData.selectedLevel3Id}'),
@@ -904,6 +1082,7 @@ class _CreateProductScreenState extends State<CreateProductScreen>
 
             // 3. INFO PENJUALAN & PENGIRIMAN
             _buildSection(
+              sectionKey: _infoSectionKey,
               title: 'Info Penjualan & Pengiriman',
               child: ProductInfoWidget(
                 key: ValueKey('product_info'),
@@ -947,6 +1126,8 @@ class _CreateProductScreenState extends State<CreateProductScreen>
             _buildPlaceholderSections(),
           ],
 
+          _buildPreviewSection(),
+
                 // Bottom spacing
                 SizedBox(height: 32),
               ],
@@ -954,12 +1135,18 @@ class _CreateProductScreenState extends State<CreateProductScreen>
           ),
         ),
       ),
-    );
+    ),
+  ),
+);
   }
 
   Widget _buildSection(
-      {required String title, Widget? child, List<Widget>? children}) {
+      {required String title,
+      Key? sectionKey,
+      Widget? child,
+      List<Widget>? children}) {
     return Container(
+      key: sectionKey,
       margin: EdgeInsets.only(bottom: 20),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1056,6 +1243,8 @@ class _CreateProductScreenState extends State<CreateProductScreen>
           child: TextFormField(
             controller: _titleController,
             focusNode: _titleFocusNode,
+            onTapOutside: (_) => FocusScope.of(context).unfocus(),
+            textInputAction: TextInputAction.next,
             validator: (value) {
               if (value == null || value.trim().isEmpty) {
                 return 'Nama produk wajib diisi';
@@ -1125,8 +1314,9 @@ class _CreateProductScreenState extends State<CreateProductScreen>
     );
   }
 
-  Widget _buildDetailProductSection() {
+  Widget _buildDetailProductSection({Key? sectionKey}) {
     return _buildSection(
+      sectionKey: sectionKey,
       title: 'Detail Produk',
       children: [
         // Deskripsi
@@ -1143,6 +1333,165 @@ class _CreateProductScreenState extends State<CreateProductScreen>
           _buildSizeChartField(),
         ],
       ],
+    );
+  }
+
+  Widget _buildSkeletonSection({required String title}) {
+    return _buildSection(
+      title: title,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSkeletonLine(widthFactor: 0.6),
+          SizedBox(height: 12),
+          _buildSkeletonLine(widthFactor: 0.9),
+          SizedBox(height: 12),
+          _buildSkeletonBlock(height: 48),
+          SizedBox(height: 12),
+          _buildSkeletonBlock(height: 48),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSkeletonLine({double widthFactor = 1.0}) {
+    return FractionallySizedBox(
+      widthFactor: widthFactor,
+      child: Container(
+        height: 12,
+        decoration: BoxDecoration(
+          color: Colors.grey[200],
+          borderRadius: BorderRadius.circular(8),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSkeletonBlock({double height = 56}) {
+    return Container(
+      height: height,
+      decoration: BoxDecoration(
+        color: Colors.grey[200],
+        borderRadius: BorderRadius.circular(12),
+      ),
+    );
+  }
+
+  Widget _buildPreviewSection() {
+    final hasPreviewData = _formData.title.trim().isNotEmpty ||
+        _formData.selectedImages.isNotEmpty ||
+        _formData.price.trim().isNotEmpty;
+
+    if (!hasPreviewData) return SizedBox.shrink();
+
+    final categoryPath = [
+      _formData.level1Name,
+      _formData.level2Name,
+      _formData.level3Name,
+      _formData.level4Name,
+      _formData.level5Name
+    ].where((name) => name.isNotEmpty).join(' > ');
+
+    return _buildSection(
+      sectionKey: _previewSectionKey,
+      title: 'Preview Ringkas',
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey[200]!),
+            ),
+            child: _formData.selectedImages.isNotEmpty
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.file(
+                      File(_formData.selectedImages.first.path),
+                      fit: BoxFit.cover,
+                    ),
+                  )
+                : Icon(Icons.image_outlined, color: Colors.grey[400]),
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _formData.title.trim().isNotEmpty
+                      ? _formData.title
+                      : 'Nama produk belum diisi',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1A237E),
+                  ),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  categoryPath.isNotEmpty
+                      ? categoryPath
+                      : 'Kategori belum dipilih',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    _buildPreviewChip(
+                      label: _formData.price.trim().isNotEmpty
+                          ? 'Rp ${_formData.price}'
+                          : 'Harga belum diisi',
+                      color: Color(0xFF2196F3),
+                    ),
+                    _buildPreviewChip(
+                      label: _formData.stock.trim().isNotEmpty
+                          ? 'Stok ${_formData.stock}'
+                          : 'Stok opsional',
+                      color: Color(0xFF4CAF50),
+                    ),
+                    _buildPreviewChip(
+                      label: _formData.weight.trim().isNotEmpty
+                          ? '${_formData.weight} ${_formData.weightUnit}'
+                          : 'Berat belum diisi',
+                      color: Color(0xFFFF9800),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPreviewChip({required String label, required Color color}) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.25)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
+      ),
     );
   }
 
@@ -1188,6 +1537,7 @@ class _CreateProductScreenState extends State<CreateProductScreen>
           child: TextFormField(
             initialValue: _formData.description,
             maxLines: 5,
+            onTapOutside: (_) => FocusScope.of(context).unfocus(),
             onChanged: (value) {
               _formData.description = value.trim();
               _formData.validateField('description', value);
@@ -1238,7 +1588,10 @@ class _CreateProductScreenState extends State<CreateProductScreen>
         ),
         SizedBox(height: 8),
         InkWell(
-          onTap: () => _showConditionDialog(),
+          onTap: () {
+            FocusManager.instance.primaryFocus?.unfocus();
+            _showConditionDialog();
+          },
           child: Container(
             padding: EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -1610,87 +1963,47 @@ class _CreateProductScreenState extends State<CreateProductScreen>
         // Detail Produk placeholder
         _buildSection(
           title: 'Detail Produk',
-          child: Container(
-            padding: EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.grey[50],
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.grey[200]!),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.info_outline, color: Colors.grey[600], size: 20),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Mohon pilih kategori terlebih dahulu.',
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          child: _buildLockedSectionMessage(),
         ),
 
         // Info Penjualan placeholder
         _buildSection(
           title: 'Info Penjualan',
-          child: Container(
-            padding: EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.grey[50],
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.grey[200]!),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.info_outline, color: Colors.grey[600], size: 20),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Mohon pilih kategori terlebih dahulu.',
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          child: _buildLockedSectionMessage(),
         ),
 
         // Pengiriman placeholder
         _buildSection(
           title: 'Pengiriman',
-          child: Container(
-            padding: EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.grey[50],
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.grey[200]!),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.info_outline, color: Colors.grey[600], size: 20),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Mohon pilih kategori terlebih dahulu.',
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          child: _buildLockedSectionMessage(),
         ),
       ],
+    );
+  }
+
+  Widget _buildLockedSectionMessage() {
+    return Container(
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.lock_outline, color: Colors.grey[600], size: 20),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Pilih kategori terlebih dahulu untuk membuka bagian ini.',
+              style: TextStyle(
+                color: Colors.grey[700],
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

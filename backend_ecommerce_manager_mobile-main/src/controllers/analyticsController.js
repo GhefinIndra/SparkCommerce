@@ -1,7 +1,7 @@
 // controllers/analyticsController.js - Multi-Platform Analytics
 const axios = require('axios');
+const { Op } = require('sequelize');
 const Token = require('../models/Token');
-const UserShop = require('../models/UserShop');
 
 /**
  *  MULTI-PLATFORM ANALYTICS CONTROLLER
@@ -48,12 +48,18 @@ exports.getSalesSummary = async (req, res) => {
     const currentEnd = endDate ? new Date(endDate) : new Date();
 
     let allOrders = [];
+    const allowedShopIds = req.allowedShopIds || [];
 
     // Get shops based on filter
     let shopsToQuery = [];
     if (shopId) {
-      // Single shop
-      const tokenDoc = await Token.findOne({ shop_id: shopId });
+      const tokenDoc = await Token.findOne({
+        where: {
+          shop_id: shopId,
+          status: 'active',
+          ...(platform !== 'all' ? { platform } : {}),
+        },
+      });
       if (!tokenDoc) {
         return res.status(404).json({
           success: false,
@@ -62,17 +68,31 @@ exports.getSalesSummary = async (req, res) => {
       }
       shopsToQuery.push(tokenDoc);
     } else {
-      // All shops (filter by platform)
-      if (platform === 'all' || platform === 'tiktok') {
-        const tiktokShops = await Token.find({});
-        shopsToQuery.push(...tiktokShops);
+      if (!allowedShopIds.length) {
+        return res.json({
+          success: true,
+          data: {
+            totalRevenue: 0,
+            orderCount: 0,
+            avgOrderValue: 0,
+            growth: null,
+            period: {
+              start: currentStart.toISOString(),
+              end: currentEnd.toISOString(),
+            },
+          },
+        });
       }
 
-      //  TODO: Shopee Implementation
-      // if (platform === 'all' || platform === 'shopee') {
-      //   const shopeeShops = await ShopeeToken.find({});
-      //   shopsToQuery.push(...shopeeShops);
-      // }
+      const where = {
+        shop_id: { [Op.in]: allowedShopIds },
+        status: 'active',
+      };
+      if (platform !== 'all') {
+        where.platform = platform;
+      }
+
+      shopsToQuery = await Token.findAll({ where });
     }
 
     // Get orders from all shops
@@ -103,7 +123,22 @@ exports.getSalesSummary = async (req, res) => {
       const previousStart = new Date(currentStart.getTime() - periodDuration);
       const previousEnd = new Date(currentStart.getTime());
 
-      const previousOrders = await getOrdersInPeriod(shopId, tokenDoc.access_token, previousStart, previousEnd);
+      let previousOrders = [];
+      for (const shop of shopsToQuery) {
+        try {
+          const orders = await getOrdersInPeriod(
+            shop.shop_id,
+            shop.access_token,
+            previousStart,
+            previousEnd,
+            shop.platform || 'tiktok'
+          );
+          previousOrders.push(...orders);
+        } catch (error) {
+          console.error(`Error fetching previous orders for shop ${shop.shop_id}:`, error.message);
+        }
+      }
+
       const previousRevenue = previousOrders.reduce((sum, order) => {
         return sum + parseFloat(order.payment?.total_amount || 0);
       }, 0);
@@ -156,18 +191,40 @@ exports.getRevenueTrend = async (req, res) => {
 
     console.log(' Getting revenue trend for shop:', shopId);
 
-    const tokenDoc = await Token.findOne({ shop_id: shopId });
-    if (!tokenDoc) {
-      return res.status(404).json({
-        success: false,
-        message: 'Shop not found',
+    let tokens = [];
+    if (shopId) {
+      const tokenDoc = await Token.findOne({ where: { shop_id: shopId, status: 'active' } });
+      if (!tokenDoc) {
+        return res.status(404).json({
+          success: false,
+          message: 'Shop not found',
+        });
+      }
+      tokens = [tokenDoc];
+    } else {
+      const allowedShopIds = req.allowedShopIds || [];
+      if (!allowedShopIds.length) {
+        return res.json({ success: true, data: [] });
+      }
+      tokens = await Token.findAll({
+        where: { shop_id: { [Op.in]: allowedShopIds }, status: 'active' },
       });
     }
 
     const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const end = endDate ? new Date(endDate) : new Date();
 
-    const orders = await getOrdersInPeriod(shopId, tokenDoc.access_token, start, end);
+    let orders = [];
+    for (const tokenDoc of tokens) {
+      const shopOrders = await getOrdersInPeriod(
+        tokenDoc.shop_id,
+        tokenDoc.access_token,
+        start,
+        end,
+        tokenDoc.platform || 'tiktok'
+      );
+      orders.push(...shopOrders);
+    }
 
     // Group by day/week/month
     const groupedData = {};
@@ -231,18 +288,40 @@ exports.getOrderStatusBreakdown = async (req, res) => {
 
     console.log(' Getting order status breakdown for shop:', shopId);
 
-    const tokenDoc = await Token.findOne({ shop_id: shopId });
-    if (!tokenDoc) {
-      return res.status(404).json({
-        success: false,
-        message: 'Shop not found',
+    let tokens = [];
+    if (shopId) {
+      const tokenDoc = await Token.findOne({ where: { shop_id: shopId, status: 'active' } });
+      if (!tokenDoc) {
+        return res.status(404).json({
+          success: false,
+          message: 'Shop not found',
+        });
+      }
+      tokens = [tokenDoc];
+    } else {
+      const allowedShopIds = req.allowedShopIds || [];
+      if (!allowedShopIds.length) {
+        return res.json({ success: true, data: { total: 0, breakdown: [] } });
+      }
+      tokens = await Token.findAll({
+        where: { shop_id: { [Op.in]: allowedShopIds }, status: 'active' },
       });
     }
 
     const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const end = endDate ? new Date(endDate) : new Date();
 
-    const orders = await getOrdersInPeriod(shopId, tokenDoc.access_token, start, end);
+    let orders = [];
+    for (const tokenDoc of tokens) {
+      const shopOrders = await getOrdersInPeriod(
+        tokenDoc.shop_id,
+        tokenDoc.access_token,
+        start,
+        end,
+        tokenDoc.platform || 'tiktok'
+      );
+      orders.push(...shopOrders);
+    }
 
     // Count by status
     const statusCount = {};
@@ -302,18 +381,40 @@ exports.getTopProducts = async (req, res) => {
 
     console.log('️ Getting top products for shop:', shopId);
 
-    const tokenDoc = await Token.findOne({ shop_id: shopId });
-    if (!tokenDoc) {
-      return res.status(404).json({
-        success: false,
-        message: 'Shop not found',
+    let tokens = [];
+    if (shopId) {
+      const tokenDoc = await Token.findOne({ where: { shop_id: shopId, status: 'active' } });
+      if (!tokenDoc) {
+        return res.status(404).json({
+          success: false,
+          message: 'Shop not found',
+        });
+      }
+      tokens = [tokenDoc];
+    } else {
+      const allowedShopIds = req.allowedShopIds || [];
+      if (!allowedShopIds.length) {
+        return res.json({ success: true, data: [] });
+      }
+      tokens = await Token.findAll({
+        where: { shop_id: { [Op.in]: allowedShopIds }, status: 'active' },
       });
     }
 
     const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const end = endDate ? new Date(endDate) : new Date();
 
-    const orders = await getOrdersInPeriod(shopId, tokenDoc.access_token, start, end);
+    let orders = [];
+    for (const tokenDoc of tokens) {
+      const shopOrders = await getOrdersInPeriod(
+        tokenDoc.shop_id,
+        tokenDoc.access_token,
+        start,
+        end,
+        tokenDoc.platform || 'tiktok'
+      );
+      orders.push(...shopOrders);
+    }
 
     // Aggregate products
     const productStats = {};
@@ -477,8 +578,15 @@ exports.getShopComparison = async (req, res) => {
 
     console.log(' Getting shop comparison analytics');
 
-    // Get all shops
-    const tokens = await Token.find({});
+    const allowedShopIds = req.allowedShopIds || [];
+    if (!allowedShopIds.length) {
+      return res.json({ success: true, data: [] });
+    }
+
+    // Get all shops (restricted)
+    const tokens = await Token.findAll({
+      where: { shop_id: { [Op.in]: allowedShopIds }, status: 'active' },
+    });
 
     const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const end = endDate ? new Date(endDate) : new Date();
@@ -499,7 +607,7 @@ exports.getShopComparison = async (req, res) => {
           return {
             shopId: tokenDoc.shop_id,
             shopName: tokenDoc.shop_name || tokenDoc.shop_id,
-            platform: 'TikTok',
+            platform: tokenDoc.platform || 'tiktok',
             revenue: parseFloat(revenue.toFixed(2)),
             orderCount,
             avgOrderValue: parseFloat(avgOrderValue.toFixed(2)),
@@ -509,7 +617,7 @@ exports.getShopComparison = async (req, res) => {
           return {
             shopId: tokenDoc.shop_id,
             shopName: tokenDoc.shop_name || tokenDoc.shop_id,
-            platform: 'TikTok',
+            platform: tokenDoc.platform || 'tiktok',
             revenue: 0,
             orderCount: 0,
             avgOrderValue: 0,

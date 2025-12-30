@@ -20,21 +20,20 @@ flutter pub get
 
 ### 2. Environment Configuration
 
-Copy example environment file:
+This app reads the API base URL from a compile-time define to avoid bundling
+`.env` inside release APKs.
 
+**Development**
 ```bash
-cp .env.example .env
+flutter run --dart-define=BASE_URL=http://10.0.2.2:5001
 ```
 
-Configure API endpoint in `.env`:
-
+**Production (HTTPS required)**
 ```bash
-# API Base URL
-# For Android Emulator: http://10.0.2.2:5001
-# For iOS Simulator: http://localhost:5001
-# For Physical Devices: http://YOUR_COMPUTER_IP:5001
-# Production: https://api.yourdomain.com
-BASE_URL=http://10.0.2.2:5001
+flutter build apk --release \
+  --dart-define=BASE_URL=https://api.yourdomain.com \
+  --obfuscate \
+  --split-debug-info=build/obfuscation
 ```
 
 ### 3. Platform-Specific Setup
@@ -53,12 +52,12 @@ BASE_URL=http://10.0.2.2:5001
 
 Development mode with hot reload:
 ```bash
-flutter run
+flutter run --dart-define=BASE_URL=http://10.0.2.2:5001
 ```
 
 Build release APK (Android):
 ```bash
-flutter build apk --release
+flutter build apk --release --dart-define=BASE_URL=https://api.yourdomain.com --obfuscate --split-debug-info=build/obfuscation
 ```
 
 Build iOS IPA:
@@ -343,7 +342,7 @@ flutter test
 ### Android Release
 
 ```bash
-flutter build apk --release
+flutter build apk --release --dart-define=BASE_URL=https://api.yourdomain.com --obfuscate --split-debug-info=build/obfuscation
 ```
 
 Output: `build/app/outputs/flutter-apk/app-release.apk`
@@ -351,7 +350,7 @@ Output: `build/app/outputs/flutter-apk/app-release.apk`
 ### iOS Release
 
 ```bash
-flutter build ios --release
+flutter build ios --release --dart-define=BASE_URL=https://api.yourdomain.com --obfuscate --split-debug-info=build/obfuscation
 ```
 
 Then archive in Xcode for App Store submission.
@@ -359,7 +358,7 @@ Then archive in Xcode for App Store submission.
 ## Troubleshooting
 
 **Cannot connect to backend**
-- Verify BASE_URL in `.env`
+- Verify BASE_URL passed via `--dart-define`
 - Use `10.0.2.2` for Android emulator
 - Use actual IP for physical devices
 - Ensure backend is running

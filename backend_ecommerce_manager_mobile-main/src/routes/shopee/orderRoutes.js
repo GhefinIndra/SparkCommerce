@@ -2,9 +2,17 @@
 const express = require('express');
 const router = express.Router();
 const OrderController = require('../../controllers/shopee/orderController');
+const { authenticateUserToken, verifyShopAccess } = require("../../middleware/auth");
+
+const requireNotProduction = (req, res, next) => {
+  if (process.env.NODE_ENV === "production") {
+    return res.status(404).json({ success: false, message: "Not found" });
+  }
+  next();
+};
 
 // Test route
-router.get('/test', async (req, res, next) => {
+router.get('/test', requireNotProduction, async (req, res, next) => {
   try {
     await OrderController.testConnection(req, res);
   } catch (error) {
@@ -14,7 +22,7 @@ router.get('/test', async (req, res, next) => {
 
 // Order list routes
 // POST /api/shopee/orders/:shopId/list
-router.post('/:shopId/list', async (req, res, next) => {
+router.post('/:shopId/list', authenticateUserToken, verifyShopAccess, async (req, res, next) => {
   try {
     await OrderController.getOrderList(req, res);
   } catch (error) {
@@ -23,7 +31,7 @@ router.post('/:shopId/list', async (req, res, next) => {
 });
 
 // GET /api/shopee/orders/:shopId/list (with query params)
-router.get('/:shopId/list', async (req, res, next) => {
+router.get('/:shopId/list', authenticateUserToken, verifyShopAccess, async (req, res, next) => {
   // Convert query params to body for consistency
   req.body = req.query.filters ? JSON.parse(req.query.filters) : req.query;
 
@@ -36,7 +44,7 @@ router.get('/:shopId/list', async (req, res, next) => {
 
 // Alternative route pattern with query params
 // POST /api/shopee/orders/list
-router.post('/list', async (req, res, next) => {
+router.post('/list', authenticateUserToken, verifyShopAccess, async (req, res, next) => {
   try {
     await OrderController.getOrderList(req, res);
   } catch (error) {
@@ -45,7 +53,7 @@ router.post('/list', async (req, res, next) => {
 });
 
 // GET /api/shopee/orders/list
-router.get('/list', async (req, res, next) => {
+router.get('/list', authenticateUserToken, verifyShopAccess, async (req, res, next) => {
   // Convert query params to body
   req.body = req.query.filters ? JSON.parse(req.query.filters) : {};
 
@@ -59,7 +67,7 @@ router.get('/list', async (req, res, next) => {
 // Order detail routes
 // GET /api/shopee/orders/:shopId/detail/:orderSns
 // orderSns can be comma-separated list: "order1,order2,order3"
-router.get('/:shopId/detail/:orderSns', async (req, res, next) => {
+router.get('/:shopId/detail/:orderSns', authenticateUserToken, verifyShopAccess, async (req, res, next) => {
   try {
     await OrderController.getOrderDetail(req, res);
   } catch (error) {
@@ -68,7 +76,7 @@ router.get('/:shopId/detail/:orderSns', async (req, res, next) => {
 });
 
 // GET /api/shopee/orders/detail
-router.get('/detail', async (req, res, next) => {
+router.get('/detail', authenticateUserToken, verifyShopAccess, async (req, res, next) => {
   try {
     await OrderController.getOrderDetail(req, res);
   } catch (error) {
@@ -78,7 +86,7 @@ router.get('/detail', async (req, res, next) => {
 
 // Shipping routes
 // POST /api/shopee/orders/:shopId/ship/:orderSn
-router.post('/:shopId/ship/:orderSn', async (req, res, next) => {
+router.post('/:shopId/ship/:orderSn', authenticateUserToken, verifyShopAccess, async (req, res, next) => {
   try {
     await OrderController.shipOrder(req, res);
   } catch (error) {
@@ -87,7 +95,7 @@ router.post('/:shopId/ship/:orderSn', async (req, res, next) => {
 });
 
 // GET /api/shopee/orders/:shopId/tracking/:orderSn
-router.get('/:shopId/tracking/:orderSn', async (req, res, next) => {
+router.get('/:shopId/tracking/:orderSn', authenticateUserToken, verifyShopAccess, async (req, res, next) => {
   try {
     await OrderController.getTrackingNumber(req, res);
   } catch (error) {
@@ -96,7 +104,7 @@ router.get('/:shopId/tracking/:orderSn', async (req, res, next) => {
 });
 
 // Debug route to check all registered routes
-router.get('/debug-routes', (req, res) => {
+router.get('/debug-routes', requireNotProduction, (req, res) => {
   const routes = [];
 
   router.stack.forEach((layer) => {

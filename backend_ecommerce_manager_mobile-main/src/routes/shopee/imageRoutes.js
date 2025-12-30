@@ -2,6 +2,7 @@
 const express = require("express");
 const router = express.Router();
 const { upload, uploadImage } = require("../../controllers/shopee/imageUploadController");
+const { authenticateUserToken, verifyShopAccess } = require("../../middleware/auth");
 
 /**
  * Shopee Image Upload Routes
@@ -9,6 +10,12 @@ const { upload, uploadImage } = require("../../controllers/shopee/imageUploadCon
  */
 
 // Upload single image
-router.post("/:shop_id/upload", upload.single("image"), uploadImage);
+router.post(
+  "/:shop_id/upload",
+  authenticateUserToken,
+  verifyShopAccess,
+  upload.single("image"),
+  uploadImage,
+);
 
 module.exports = router;

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../utils/app_config.dart';
 
 class AuthWebViewScreen extends StatefulWidget {
   final String platform; // 'tiktok' or 'shopee'
@@ -53,14 +54,19 @@ class _AuthWebViewScreenState extends State<AuthWebViewScreen> {
             });
           },
           onPageFinished: (String url) {
+            print('✅ Page finished loading: $url');
             setState(() {
               _isLoading = false;
             });
 
             if (url.contains('/success')) {
+              print('🎉 Success URL detected, calling handler');
               _handleAuthSuccess(url);
             } else if (url.contains('/error')) {
+              print('❌ Error URL detected, calling handler');
               _handleAuthError(url);
+            } else {
+              print('ℹ️ Normal page load (not success/error)');
             }
           },
           onWebResourceError: (WebResourceError error) {
@@ -74,20 +80,12 @@ class _AuthWebViewScreenState extends State<AuthWebViewScreen> {
               if (error.errorCode == -2 && error.url != null) {
                 final failingUrl = error.url!;
 
-                bool isBackendError = failingUrl.contains('://10.0.2.2') ||
-                    failingUrl.contains('://localhost') ||
-                    failingUrl.startsWith('http://10.0.2.2') ||
-                    failingUrl.startsWith('http://localhost') ||
-                    failingUrl.startsWith(
-                        'https://fittingly-attentive-vivian.ngrok-free.dev');
+                final backendOrigin = Uri.parse(AppConfig.baseUrl).origin;
+                bool isBackendError =
+                    failingUrl.startsWith(backendOrigin);
 
                 bool stillOnBackend = currentUrl != null &&
-                    (currentUrl.contains('://10.0.2.2') ||
-                        currentUrl.contains('://localhost') ||
-                        currentUrl.startsWith('http://10.0.2.2') ||
-                        currentUrl.startsWith('http://localhost') ||
-                        currentUrl.startsWith(
-                            'https://fittingly-attentive-vivian.ngrok-free.dev'));
+                    currentUrl.startsWith(backendOrigin);
 
                 print('   Is backend error: $isBackendError');
                 print('   Still on backend: $stillOnBackend');
@@ -107,6 +105,8 @@ class _AuthWebViewScreenState extends State<AuthWebViewScreen> {
             });
           },
           onNavigationRequest: (NavigationRequest request) {
+            print('🔄 Navigation request: ${request.url}');
+            print('   Is for main frame: ${request.isMainFrame}');
             return NavigationDecision.navigate;
           },
           onHttpError: (HttpResponseError error) {
@@ -124,9 +124,11 @@ class _AuthWebViewScreenState extends State<AuthWebViewScreen> {
 
     if (widget.platform == 'shopee') {
       final url = '$baseUrl/oauth/shopee/authorize?user_token=$userToken';
+      print('📍 Loading Shopee auth URL: $url');
       return url;
     } else {
       final url = '$baseUrl/oauth/tiktok/authorize?user_token=$userToken';
+      print('📍 Loading TikTok auth URL: $url');
       return url;
     }
   }

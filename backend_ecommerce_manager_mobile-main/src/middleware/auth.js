@@ -1,6 +1,7 @@
 // backend_ecommerce_manager_mobile/src/middleware/auth.js
 const jwt = require("jsonwebtoken");
 const Token = require("../models/Token");
+const UserShop = require("../models/UserShop");
 
 // JWT Secret (add to env later)
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-this";
@@ -40,31 +41,78 @@ const authenticateToken = async (req, res, next) => {
   }
 };
 
-// Middleware to verify shop access
+const resolveShopIdentifier = (req) => {
+  let shopId =
+    req.params.shopId ||
+    req.params.shop_id ||
+    req.body?.shopId ||
+    req.body?.shop_id ||
+    req.query?.shopId ||
+    req.query?.shop_id ||
+    req.query?.sellerId;
+
+  if (!shopId && req.query?.filters) {
+    try {
+      const parsed = JSON.parse(req.query.filters);
+      shopId = parsed.shopId || parsed.shop_id || parsed.sellerId;
+    } catch (_) {
+      // ignore malformed filters
+    }
+  }
+
+  return {
+    shopId,
+    shopCipher: req.query?.shop_cipher || req.body?.shop_cipher,
+  };
+};
+
+// Middleware to verify shop access for authenticated user
 const verifyShopAccess = async (req, res, next) => {
   try {
-    const { shopId } = req.params;
     const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
 
-    if (!shopId) {
+    const { shopId, shopCipher } = resolveShopIdentifier(req);
+
+    if (!shopId && !shopCipher) {
       return res.status(400).json({
         success: false,
         message: "Shop ID required",
       });
     }
 
-    // Check if user has access to this shop
+    // Resolve token record
     const shop = await Token.findOne({
-      where: {
-        shop_id: shopId,
-        status: "active",
-      },
+      where: shopId
+        ? { shop_id: shopId, status: "active" }
+        : { shop_cipher: shopCipher, status: "active" },
     });
 
     if (!shop) {
       return res.status(404).json({
         success: false,
         message: "Shop not found or access denied",
+      });
+    }
+
+    // Verify user-shop relation
+    const relation = await UserShop.findOne({
+      where: {
+        user_id: userId,
+        shop_id: shop.shop_id,
+        status: "active",
+      },
+    });
+
+    if (!relation) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied to this shop",
       });
     }
 
@@ -79,13 +127,34 @@ const verifyShopAccess = async (req, res, next) => {
   }
 };
 
-// Rate limiting middleware
+// Rate limiting middleware (IP-based)
 const createRateLimit = (windowMs = 15 * 60 * 1000, max = 100) => {
   const rateLimit = require("express-rate-limit");
 
   return rateLimit({
     windowMs, // 15 minutes
     max, // limit each IP to max requests per windowMs
+    message: {
+      success: false,
+      message: "Too many requests, please try again later.",
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+};
+
+// Rate limiting middleware (auth_token or IP-based)
+const createAuthRateLimit = (windowMs = 15 * 60 * 1000, max = 120) => {
+  const rateLimit = require("express-rate-limit");
+
+  return rateLimit({
+    windowMs,
+    max,
+    keyGenerator: (req) => {
+      const authToken = req.headers["auth_token"];
+      const bearer = req.headers["authorization"]?.split(" ")[1];
+      return authToken || bearer || req.ip;
+    },
     message: {
       success: false,
       message: "Too many requests, please try again later.",
@@ -138,7 +207,33 @@ module.exports = {
   authenticateToken,
   authenticate: authenticateToken, // Alias for convenience (JWT)
   authenticateUserToken, // NEW: For auth_token in header
+  attachUserShopIds: async (req, res, next) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          message: "Authentication required",
+        });
+      }
+
+      const shops = await UserShop.findAll({
+        where: { user_id: userId, status: "active" },
+        attributes: ["shop_id"],
+      });
+
+      req.allowedShopIds = shops.map((row) => row.shop_id);
+      next();
+    } catch (error) {
+      console.error("Failed to resolve user shops:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to resolve user shops",
+      });
+    }
+  },
   verifyShopAccess,
   createRateLimit,
+  createAuthRateLimit,
   securityHeaders,
 };

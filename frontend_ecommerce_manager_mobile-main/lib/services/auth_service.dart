@@ -1,17 +1,20 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models/user.dart';
+import '../utils/app_config.dart';
 
 class AuthService {
-  static String get baseUrl => '${dotenv.env['BASE_URL'] ?? 'http://10.0.2.2:5000'}/api/user';
+  static String get baseUrl => '${AppConfig.apiBaseUrl}/user';
   static const String _currentUserEmailKey = 'current_user_email';
 
   static final AuthService _instance = AuthService._internal();
   factory AuthService() => _instance;
   AuthService._internal();
+
+  static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
 
   User? _currentUser;
   User? get currentUser => _currentUser;
@@ -157,7 +160,7 @@ class AuthService {
         throw Exception('No current user found');
       }
 
-      final authToken = await _getStoredAuthToken(currentEmail);
+      final authToken = await getStoredAuthToken(currentEmail);
       if (authToken == null) {
         throw Exception('No auth token found');
       }
@@ -215,7 +218,7 @@ class AuthService {
         throw Exception('No current user found');
       }
 
-      final token = await _getStoredAuthToken(currentEmail);
+      final token = await getStoredAuthToken(currentEmail);
 
       if (token == null || token.isEmpty) {
         await logout();
@@ -316,7 +319,7 @@ class AuthService {
         throw Exception('No current user found');
       }
 
-      final token = await _getStoredAuthToken(currentEmail);
+      final token = await getStoredAuthToken(currentEmail);
 
       if (token == null || token.isEmpty) {
         await logout();
@@ -397,7 +400,7 @@ class AuthService {
     try {
       final currentEmail = await _getCurrentUserEmail();
       if (currentEmail != null) {
-        final authToken = await _getStoredAuthToken(currentEmail);
+        final authToken = await getStoredAuthToken(currentEmail);
         if (authToken != null) {
 
           final response = await http
@@ -442,7 +445,7 @@ class AuthService {
         return false;
       }
 
-      final authToken = await _getStoredAuthToken(currentEmail);
+      final authToken = await getStoredAuthToken(currentEmail);
       if (authToken == null) {
         
         return false;
@@ -465,7 +468,7 @@ class AuthService {
     try {
       final currentEmail = await _getCurrentUserEmail();
       if (currentEmail != null) {
-        final authToken = await _getStoredAuthToken(currentEmail);
+        final authToken = await getStoredAuthToken(currentEmail);
         if (authToken != null) {
           try {
             await getProfile();
@@ -501,14 +504,28 @@ class AuthService {
     final tokenKey = _getUserTokenKey(user.email);
     final dataKey = _getUserDataKey(user.email);
 
-    await prefs.setString(tokenKey, user.authToken);
-    await prefs.setString(dataKey, json.encode(user.toJson()));
+    await _secureStorage.write(key: tokenKey, value: user.authToken);
+    final userData = Map<String, dynamic>.from(user.toJson());
+    userData.remove('auth_token');
+    await prefs.setString(dataKey, json.encode(userData));
   }
 
-  Future<String?> _getStoredAuthToken(String email) async {
-    final prefs = await SharedPreferences.getInstance();
+  Future<String?> getStoredAuthToken(String email) async {
     final tokenKey = _getUserTokenKey(email);
-    return prefs.getString(tokenKey);
+    final secureToken = await _secureStorage.read(key: tokenKey);
+    if (secureToken != null && secureToken.isNotEmpty) {
+      return secureToken;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final legacyToken = prefs.getString(tokenKey);
+    if (legacyToken != null && legacyToken.isNotEmpty) {
+      await _secureStorage.write(key: tokenKey, value: legacyToken);
+      await prefs.remove(tokenKey);
+      return legacyToken;
+    }
+
+    return null;
   }
 
   Future<void> _clearUserSession(String email) async {
@@ -516,7 +533,7 @@ class AuthService {
     final tokenKey = _getUserTokenKey(email);
     final dataKey = _getUserDataKey(email);
 
-    await prefs.remove(tokenKey);
+    await _secureStorage.delete(key: tokenKey);
     await prefs.remove(dataKey);
   }
 

@@ -2,8 +2,12 @@
 const express = require('express');
 const router = express.Router();
 const analyticsController = require('../controllers/analyticsController');
-// NOTE: authenticateToken removed - users don't have JWT tokens, only random auth_token
-// TODO: Implement proper JWT-based auth in the future
+const {
+  authenticateUserToken,
+  verifyShopAccess,
+  attachUserShopIds,
+} = require('../middleware/auth');
+// NOTE: analytics routes require auth_token via authenticateUserToken
 
 /**
  *  ANALYTICS ROUTES - Multi-Platform
@@ -28,6 +32,8 @@ const analyticsController = require('../controllers/analyticsController');
  */
 router.get(
   '/sales-summary',
+  authenticateUserToken,
+  attachUserShopIds,
   analyticsController.getSalesSummary
 );
 
@@ -37,6 +43,8 @@ router.get(
  */
 router.get(
   '/shops/:shopId/sales-summary',
+  authenticateUserToken,
+  verifyShopAccess,
   analyticsController.getSalesSummary
 );
 
@@ -47,6 +55,8 @@ router.get(
  */
 router.get(
   '/revenue-trend',
+  authenticateUserToken,
+  attachUserShopIds,
   analyticsController.getRevenueTrend
 );
 
@@ -56,6 +66,8 @@ router.get(
  */
 router.get(
   '/shops/:shopId/revenue-trend',
+  authenticateUserToken,
+  verifyShopAccess,
   analyticsController.getRevenueTrend
 );
 
@@ -69,6 +81,8 @@ router.get(
  */
 router.get(
   '/order-status-breakdown',
+  authenticateUserToken,
+  attachUserShopIds,
   analyticsController.getOrderStatusBreakdown
 );
 
@@ -78,6 +92,8 @@ router.get(
  */
 router.get(
   '/shops/:shopId/order-status-breakdown',
+  authenticateUserToken,
+  verifyShopAccess,
   analyticsController.getOrderStatusBreakdown
 );
 
@@ -92,6 +108,8 @@ router.get(
  */
 router.get(
   '/top-products',
+  authenticateUserToken,
+  attachUserShopIds,
   analyticsController.getTopProducts
 );
 
@@ -101,6 +119,8 @@ router.get(
  */
 router.get(
   '/shops/:shopId/top-products',
+  authenticateUserToken,
+  verifyShopAccess,
   analyticsController.getTopProducts
 );
 
@@ -114,6 +134,7 @@ router.get(
  */
 router.get(
   '/sku-analytics',
+  authenticateUserToken,
   analyticsController.getSKUAnalytics
 );
 
@@ -128,6 +149,8 @@ router.get(
  */
 router.get(
   '/shop-comparison',
+  authenticateUserToken,
+  attachUserShopIds,
   analyticsController.getShopComparison
 );
 

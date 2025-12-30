@@ -4,7 +4,11 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const config = require("./src/config/env");
-const { securityHeaders, createRateLimit } = require("./src/middleware/auth");
+const {
+  securityHeaders,
+  createRateLimit,
+  createAuthRateLimit,
+} = require("./src/middleware/auth");
 
 // TikTok Routes
 const tiktokAuthRoutes = require("./src/routes/tiktok/authRoutes");
@@ -28,9 +32,14 @@ const analyticsRoutes = require("./src/routes/analyticsRoutes");
 
 // Group Routes (Dashboard Integration)
 const groupRoutes = require("./src/routes/groupRoutes");
+const dashboardRoutes = require("./src/routes/dashboardRoutes");
+const { startTikTokTokenScheduler } = require("./src/services/tiktok/tokenScheduler");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+app.disable("x-powered-by");
+app.set("trust proxy", 1);
 
 // Basic middleware
 app.use(express.json({ limit: "50mb" }));
@@ -41,6 +50,8 @@ app.use(
   cors({
     origin: [
       "http://localhost:3000",
+      "http://spark.tuantoko.com",
+      "https://spark.tuantoko.com",
       "http://10.0.2.2:5000",
       "http://127.0.0.1:5000",
       "http://192.168.137.142:5000",
@@ -69,6 +80,27 @@ app.options("*", (req, res) => {
 app.use(securityHeaders());
 app.use("/api/user", createRateLimit());
 app.use("/api/oauth", createRateLimit());
+app.use("/api/analytics", createAuthRateLimit());
+app.use("/api/dashboard", createAuthRateLimit());
+app.use("/api/tiktok/orders", createAuthRateLimit());
+app.use("/api/shopee/orders", createAuthRateLimit());
+app.use("/api/orders", createAuthRateLimit());
+
+if (
+  process.env.NODE_ENV === "production" &&
+  process.env.FORCE_HTTPS === "true"
+) {
+  app.use((req, res, next) => {
+    const proto = req.headers["x-forwarded-proto"];
+    if (proto && proto !== "https") {
+      return res.status(400).json({
+        success: false,
+        message: "HTTPS is required",
+      });
+    }
+    next();
+  });
+}
 
 // TikTok Routes Registration (New endpoints with /tiktok prefix)
 app.use("/api/oauth/tiktok", tiktokAuthRoutes);
@@ -105,6 +137,7 @@ app.use("/api/analytics", analyticsRoutes);
 
 // Group Routes Registration (Dashboard Integration)
 app.use("/api/groups", groupRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 
 // Health check endpoint
 app.get("/health", (req, res) => {
@@ -113,6 +146,48 @@ app.get("/health", (req, res) => {
     timestamp: new Date().toISOString(),
     environment: config.server.nodeEnv || process.env.NODE_ENV || "development",
   });
+});
+
+// OAuth Success/Error pages for mobile WebView
+app.get("/success", (req, res) => {
+  const { platform, shopId, openId, seller } = req.query;
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Authorization Success</title>
+    </head>
+    <body>
+      <h1>✓ Authorization Successful</h1>
+      <p>Platform: ${platform || 'Unknown'}</p>
+      <p>Shop: ${seller || shopId || 'Unknown'}</p>
+      <script>
+        // Mobile WebView will detect this URL
+        window.location.href = window.location.href;
+      </script>
+    </body>
+    </html>
+  `);
+});
+
+app.get("/error", (req, res) => {
+  const { message } = req.query;
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Authorization Error</title>
+    </head>
+    <body>
+      <h1>✗ Authorization Failed</h1>
+      <p>Error: ${message || 'Unknown error'}</p>
+    </body>
+    </html>
+  `);
 });
 
 // Root endpoint
@@ -305,6 +380,9 @@ async function startServer() {
 
     // Initialize SQLite for SKU Master
     initSQLiteDatabase();
+
+    // Start TikTok token auto-refresh scheduler
+    startTikTokTokenScheduler();
 
     // Start listening
     app.listen(PORT, "0.0.0.0", () => {

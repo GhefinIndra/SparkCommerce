@@ -2,8 +2,9 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'database_service.dart';
+import 'auth_service.dart';
+import '../utils/app_config.dart';
 
 class SKUSyncService {
   static final SKUSyncService _instance = SKUSyncService._internal();
@@ -12,16 +13,19 @@ class SKUSyncService {
 
   final DatabaseService _db = DatabaseService();
 
-  // Get base URL from .env
+  // Get base URL from compile-time define (BASE_URL)
   String get _baseUrl {
-    final baseUrl = dotenv.env['BASE_URL'] ?? 'http://10.0.2.2:5000';
-    return '$baseUrl/api';
+    return AppConfig.apiBaseUrl;
   }
 
   // Get auth token from SharedPreferences
   Future<String?> _getAuthToken() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('auth_token');
+    final currentEmail = prefs.getString('current_user_email');
+    if (currentEmail == null) {
+      return null;
+    }
+    return AuthService().getStoredAuthToken(currentEmail);
   }
 
   // Get auth headers
@@ -29,7 +33,7 @@ class SKUSyncService {
     final token = await _getAuthToken();
     return {
       'Content-Type': 'application/json',
-      if (token != null) 'Authorization': 'Bearer $token',
+      if (token != null && token.isNotEmpty) 'auth_token': token,
     };
   }
 
@@ -199,10 +203,7 @@ class SKUSyncService {
 
       final response = await http.put(
         Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+        headers: await _getAuthHeaders(),
         body: jsonEncode(body),
       ).timeout(const Duration(seconds: 30));
 
@@ -257,10 +258,7 @@ class SKUSyncService {
 
       final response = await http.put(
         Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+        headers: await _getAuthHeaders(),
         body: jsonEncode(body),
       ).timeout(const Duration(seconds: 30));
 

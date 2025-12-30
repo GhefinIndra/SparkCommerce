@@ -11,6 +11,7 @@ const requiredEnvVars = [
   "SHOPEE_PARTNER_ID",
   "SHOPEE_PARTNER_KEY",
   "SHOPEE_REDIRECT_URI",
+  "TOKEN_ENCRYPTION_KEY",
 ];
 
 requiredEnvVars.forEach((envVar) => {
@@ -26,6 +27,7 @@ const config = {
     appKey: process.env.TIKTOK_APP_KEY,
     appSecret: process.env.TIKTOK_APP_SECRET,
     redirectUri: process.env.TIKTOK_REDIRECT_URI,
+    scopes: process.env.TIKTOK_SCOPES || "",
     apiUrl:
       process.env.TIKTOK_API_URL || "https://open-api.tiktokglobalshop.com",
   },
@@ -44,6 +46,11 @@ const config = {
     port: process.env.PORT || 5000,
     nodeEnv: process.env.NODE_ENV || "development",
     clientUrl: process.env.CLIENT_URL || "http://localhost:3000",
+  },
+
+  // Security
+  security: {
+    encryptionKey: process.env.TOKEN_ENCRYPTION_KEY,
   },
 
   // Database

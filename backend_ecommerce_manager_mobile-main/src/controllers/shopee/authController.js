@@ -170,43 +170,38 @@ exports.callback = async (req, res) => {
     const savedToken = await Token.upsert(tokenData);
     console.log("Token and shop info saved successfully");
 
-    console.log("Linking shop to most recent active user...");
+    console.log("Linking shop to user based on user_token...");
 
     try {
-      // Get the most recently active user (by token expiry)
-      const recentUser = await User.findOne({
-        where: {
-          status: "active",
-          token_expires_at: {
-            [Op.gt]: new Date(),
-          },
-        },
-        order: [["token_expires_at", "DESC"]],
-      });
+      if (user_token) {
+        const user = await User.findByAuthToken(user_token);
 
-      if (recentUser) {
-        // Check if relation already exists
-        const existingRelation = await UserShop.findOne({
-          where: {
-            user_id: recentUser.id,
-            shop_id: shop_id.toString(),
-          },
-        });
-
-        if (existingRelation) {
-          console.log("User-shop relation already exists, updating...");
-          await existingRelation.update({
-            status: "active",
-            updated_at: new Date(),
+        if (user) {
+          // Check if relation already exists
+          const existingRelation = await UserShop.findOne({
+            where: {
+              user_id: user.id,
+              shop_id: shop_id.toString(),
+            },
           });
-        } else {
-          console.log("Creating new user-shop relation...");
-          await UserShop.createRelation(recentUser.id, shop_id.toString(), "owner");
-        }
 
-        console.log("Shopee shop connected to user:", recentUser.email);
+          if (existingRelation) {
+            console.log("User-shop relation already exists, updating...");
+            await existingRelation.update({
+              status: "active",
+              updated_at: new Date(),
+            });
+          } else {
+            console.log("Creating new user-shop relation...");
+            await UserShop.createRelation(user.id, shop_id.toString(), "owner");
+          }
+
+          console.log("Shopee shop connected to user:", user.email);
+        } else {
+          console.log("User not found for provided user_token, shop will be orphaned");
+        }
       } else {
-        console.log("No active user found, shop will be orphaned (can be claimed later)");
+        console.log("No user_token provided, shop will be orphaned (can be claimed later)");
       }
     } catch (relationError) {
       console.error("Failed to create user-shop relation:", relationError.message);
@@ -314,6 +309,74 @@ exports.getShops = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching Shopee shops:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+// Delete Shopee shop (remove from DB and user relations)
+exports.deleteShop = async (req, res) => {
+  try {
+    const { shopId } = req.params;
+
+    const authToken =
+      req.headers.auth_token ||
+      req.headers["auth-token"] ||
+      req.headers.authorization?.replace("Bearer ", "");
+
+    if (!authToken || authToken === "none" || authToken === "null") {
+      return res.status(401).json({
+        success: false,
+        message: "Auth token required",
+      });
+    }
+
+    const user = await getUserFromAuthToken(authToken);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid or expired token",
+      });
+    }
+
+    const relation = await UserShop.findOne({
+      where: {
+        user_id: user.id,
+        shop_id: shopId,
+        status: "active",
+      },
+    });
+
+    if (!relation) {
+      return res.status(403).json({
+        success: false,
+        message: "Anda tidak memiliki akses ke toko ini",
+      });
+    }
+
+    const deletedRelations = await UserShop.destroy({
+      where: { shop_id: shopId },
+    });
+
+    // Hapus token apa pun untuk shop_id ini (fallback tanpa filter platform)
+    const deletedTokens = await Token.destroy({
+      where: { shop_id: shopId },
+    });
+
+    res.json({
+      success: true,
+      message: "Toko Shopee berhasil dihapus dari database",
+      data: {
+        shop_id: shopId,
+        removed_relations: deletedRelations,
+        removed_tokens: deletedTokens,
+      },
+    });
+  } catch (error) {
+    console.error("Error deleting Shopee shop:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",

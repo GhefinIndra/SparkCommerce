@@ -1,5 +1,6 @@
 // src/controllers/productController.js
 const Token = require("../../models/Token");
+const UserShop = require("../../models/UserShop");
 const productApi = require("../../services/tiktok/productAPI");
 const { Op } = require("sequelize");
 
@@ -9,7 +10,33 @@ class ProductController {
     try {
       console.log(" Getting all shops for mobile...");
 
-      const tokens = await Token.getActiveTokens();
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          message: "Authentication required",
+        });
+      }
+
+      const userShops = await UserShop.findUserShops(userId);
+      const shopIds = userShops.map((shop) => shop.shop_id);
+
+      if (shopIds.length === 0) {
+        return res.status(200).json({
+          success: true,
+          message: "No shops found",
+          data: [],
+        });
+      }
+
+      const tokens = await Token.findAll({
+        where: {
+          shop_id: { [Op.in]: shopIds },
+          status: "active",
+          platform: "tiktok",
+        },
+        order: [["updated_at", "DESC"]],
+      });
 
       console.log(" Found active tokens:", tokens.length);
 

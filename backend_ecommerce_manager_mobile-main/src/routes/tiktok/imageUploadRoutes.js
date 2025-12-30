@@ -2,6 +2,7 @@
 const express = require("express");
 const router = express.Router();
 const imageUploadController = require("../../controllers/tiktok/imageUploadController");
+const { authenticateUserToken, verifyShopAccess } = require("../../middleware/auth");
 
 // Error handling middleware untuk multer
 const handleMulterError = (err, req, res, next) => {
@@ -42,6 +43,8 @@ const handleMulterError = (err, req, res, next) => {
 
 router.post(
   "/:shop_id/upload",
+  authenticateUserToken,
+  verifyShopAccess,
   imageUploadController.uploadMiddleware.single("data"), // Field name 'data' sesuai TikTok API
   handleMulterError,
   imageUploadController.uploadImage,
@@ -49,6 +52,8 @@ router.post(
 
 router.post(
   "/:shop_id/upload-multiple",
+  authenticateUserToken,
+  verifyShopAccess,
   imageUploadController.uploadMiddleware.array("data", 9), // Max 9 files sesuai TikTok limit
   handleMulterError,
   imageUploadController.uploadMultipleImages,

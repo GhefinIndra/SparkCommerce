@@ -13,7 +13,7 @@ class HomeScreen extends StatefulWidget {
   _HomeScreenState createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   final ApiService _apiService = ApiService();
   final DatabaseService _db = DatabaseService();
   
@@ -22,40 +22,40 @@ class _HomeScreenState extends State<HomeScreen> {
   int _totalSKUs = 0;
   bool _isLoadingStats = true;
 
+  // Animation controller for manual shimmer effect
+  late AnimationController _shimmerController;
+
   @override
   void initState() {
     super.initState();
+    _shimmerController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat();
+    
     _loadStats();
+  }
+
+  @override
+  void dispose() {
+    _shimmerController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadStats() async {
     setState(() => _isLoadingStats = true);
     
     try {
-      // Load total shops
-      final shops = await _apiService.getShops();
-      int shopCount = shops.length;
+      // FAST LOADING: Call aggregated endpoint
+      final stats = await _apiService.getDashboardStats();
       
-      // Load total orders (sum dari semua shop)
-      int totalOrderCount = 0;
-      for (var shop in shops) {
-        try {
-          final ordersResponse = shop.platform.toLowerCase().contains('shopee')
-              ? await _apiService.getShopeeOrders(shop.id)
-              : await _apiService.getOrders(shop.id);
-          totalOrderCount += ordersResponse.length;
-        } catch (e) {
-          // Skip this shop if error, continue to next shop
-        }
-      }
-      
-      // Load total SKUs
+      // Load local SKUs (usually fast, no network)
       final skus = await _db.getAllSKUs();
       int skuCount = skus.length;
       
       setState(() {
-        _totalShops = shopCount;
-        _totalOrders = totalOrderCount;
+        _totalShops = stats['totalShops'] ?? 0;
+        _totalOrders = stats['totalOrders'] ?? 0;
         _totalSKUs = skuCount;
         _isLoadingStats = false;
       });
@@ -221,7 +221,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             child: _buildStatCard(
                               icon: Icons.store_outlined,
                               label: 'Shops',
-                              value: _isLoadingStats ? '-' : '$_totalShops',
+                              value: '$_totalShops',
                               color: Color(0xFF2196F3),
                             ),
                           ),
@@ -230,7 +230,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             child: _buildStatCard(
                               icon: Icons.shopping_bag_outlined,
                               label: 'Orders',
-                              value: _isLoadingStats ? '-' : '$_totalOrders',
+                              value: '$_totalOrders',
                               color: Color(0xFF00BCD4),
                             ),
                           ),
@@ -239,7 +239,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             child: _buildStatCard(
                               icon: Icons.inventory_2_outlined,
                               label: 'SKUs',
-                              value: _isLoadingStats ? '-' : '$_totalSKUs',
+                              value: '$_totalSKUs',
                               color: Color(0xFF03A9F4),
                             ),
                           ),
@@ -510,14 +510,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Icon(icon, color: Colors.white, size: 24),
           SizedBox(height: 8),
           _isLoadingStats
-              ? SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
+              ? _buildShimmerLoading()
               : Text(
                   value,
                   style: TextStyle(
@@ -537,6 +530,26 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  // Custom Shimmer Widget for Loading State
+  Widget _buildShimmerLoading() {
+    return AnimatedBuilder(
+      animation: _shimmerController,
+      builder: (context, child) {
+        return Opacity(
+          opacity: 0.5 + 0.5 * _shimmerController.value, // Fade effect
+          child: Container(
+            width: 40,
+            height: 20,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+        );
+      },
     );
   }
 

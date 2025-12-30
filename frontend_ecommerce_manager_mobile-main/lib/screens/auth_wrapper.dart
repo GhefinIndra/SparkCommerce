@@ -55,9 +55,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
       }
 
       // Check apakah ada token untuk user ini
-      final tokenKey =
-          'user_auth_token_${currentEmail.toLowerCase().replaceAll('@', '_at_').replaceAll('.', '_dot_')}';
-      final token = prefs.getString(tokenKey);
+      final token = await authService.getStoredAuthToken(currentEmail);
 
       if (token == null || token.isEmpty) {
         return false;

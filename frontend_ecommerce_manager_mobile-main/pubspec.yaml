@@ -29,10 +29,11 @@ dependencies:
 
   # WebView untuk OAuth
   webview_flutter: ^4.4.2
+  url_launcher: ^6.2.0
 
   # Local storage
   shared_preferences: ^2.2.2
-  flutter_dotenv: ^5.1.0               # ADD: Environment variables
+  flutter_secure_storage: ^9.0.0
 
   # Image handling
   image_picker: ^1.0.4
@@ -57,9 +58,9 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  # Assets
+  # Assets - .env is intentionally not bundled for security. Use --dart-define.
   assets:
-    - .env
+    - assets/
   
   # fonts:
   #   - family: Schyler

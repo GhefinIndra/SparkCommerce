@@ -1,28 +1,53 @@
 // lib/services/api_service.dart
 import 'dart:convert';
 import 'dart:io';
+import 'dart:async';
 import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../models/shop.dart';
 import '../models/order.dart';
 import '../services/auth_service.dart';
 import 'package:http_parser/http_parser.dart';
+import '../utils/app_error.dart';
+import '../utils/app_config.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  // Read base URL from .env
-  static String get baseUrl => '${dotenv.env['BASE_URL'] ?? 'http://10.0.2.2:5000'}/api';
+  // Base URL from compile-time define (BASE_URL)
+  static String get baseUrl => AppConfig.apiBaseUrl;
 
   
   static final ApiService _instance = ApiService._internal();
   factory ApiService() => _instance;
   ApiService._internal();
 
-  
+  // NEW: Get Aggregated Dashboard Stats (Fast Loading)
+  Future<Map<String, dynamic>> getDashboardStats() async {
+    try {
+      final headers = await _getAuthHeaders();
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/api/dashboard/stats'),
+            headers: headers,
+          )
+          .timeout(Duration(seconds: 15));
 
-  
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+        if (data['success'] == true && data['data'] != null) {
+          return data['data'];
+        }
+      }
+      // Fallback if endpoint fails or returns empty
+      return {'totalShops': 0, 'totalOrders': 0, 'totalSKUs': 0};
+    } catch (e) {
+      print('Error fetching dashboard stats: $e');
+      // Return zeros instead of throwing to prevent app crash on dashboard
+      return {'totalShops': 0, 'totalOrders': 0, 'totalSKUs': 0};
+    }
+  }
+
   Future<List<Shop>> getShops() async {
     try {
-
       final headers = await _getAuthHeaders();
       List<Shop> allShops = [];
 
@@ -39,12 +64,13 @@ class ApiService {
           final Map<String, dynamic> data = json.decode(tiktokResponse.body);
           if (data['success'] == true && data['data'] != null) {
             final List<dynamic> shopsJson = data['data'];
-            final tiktokShops = shopsJson.map((json) => Shop.fromJson(json)).toList();
+            final tiktokShops =
+                shopsJson.map((json) => Shop.fromJson(json)).toList();
             allShops.addAll(tiktokShops);
           }
         }
       } catch (e) {
-        
+        // swallow per-platform error to keep other platforms loading
       }
 
       // Fetch Shopee shops
@@ -60,22 +86,57 @@ class ApiService {
           final Map<String, dynamic> data = json.decode(shopeeResponse.body);
           if (data['success'] == true && data['data'] != null) {
             final List<dynamic> shopsJson = data['data'];
-            final shopeeShops = shopsJson.map((json) => Shop.fromJson(json)).toList();
+            final shopeeShops =
+                shopsJson.map((json) => Shop.fromJson(json)).toList();
             allShops.addAll(shopeeShops);
           }
         }
       } catch (e) {
-        
+        // swallow per-platform error to keep other platforms loading
       }
 
       return allShops;
-    } on SocketException {
-      throw Exception(
-          'Tidak dapat terhubung ke server. Pastikan server berjalan');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal memuat data toko: ${e.toString()}');
+      throw AppError.from(e, action: 'memuat data toko');
+    }
+  }
+
+  Future<bool> deleteShop(String shopId, {required String platform}) async {
+    final isShopee = platform.toLowerCase().contains('shopee');
+    final url = isShopee
+        ? '$baseUrl/oauth/shopee/shops/$shopId'
+        : '$baseUrl/oauth/tiktok/shops/$shopId';
+
+    try {
+      final response = await http
+          .delete(
+            Uri.parse(url),
+            headers: await _getAuthHeaders(),
+          )
+          .timeout(Duration(seconds: 10));
+
+      final Map<String, dynamic> data = json.decode(response.body);
+
+      if (response.statusCode == 200 && data['success'] == true) {
+        return true;
+      }
+
+      if (response.statusCode == 401) {
+        await AuthService().logout();
+        throw AppError('Sesi berakhir, silakan login lagi.');
+      }
+
+      if (response.statusCode == 403) {
+        throw AppError('Anda tidak memiliki akses untuk menghapus toko ini');
+      }
+
+      final message = data['message'] ?? 'Gagal menghapus toko';
+      throw AppError(
+        'Gagal menghapus toko (HTTP ${response.statusCode})',
+        debugMessage: message,
+      );
+    } catch (e) {
+      throw AppError.from(e, action: 'menghapus toko');
     }
   }
 
@@ -96,23 +157,27 @@ class ApiService {
         if (data['success'] == true && data['data'] != null) {
           return Shop.fromJson(data['data']);
         } else {
-          throw Exception(data['message'] ?? 'Shop not found');
+          throw AppError(
+            data['message'] ?? 'Toko tidak ditemukan',
+            debugMessage: data.toString(),
+          );
         }
       } else if (response.statusCode == 401) {
         
         await AuthService().logout();
-        throw Exception('Session expired. Please login again.');
+        throw AppError('Sesi berakhir, silakan login lagi.');
       } else if (response.statusCode == 403) {
-        throw Exception('Access denied to this shop');
+        throw AppError('Akses ditolak ke toko ini');
       } else if (response.statusCode == 404) {
-        throw Exception('Toko tidak ditemukan');
+        throw AppError('Toko tidak ditemukan');
       } else {
-        throw Exception('HTTP ${response.statusCode}: Server error');
+        throw AppError(
+          'Gagal memuat info toko (HTTP ${response.statusCode})',
+          debugMessage: response.body,
+        );
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
     } catch (e) {
-      throw Exception('Gagal memuat info toko: ${e.toString()}');
+      throw AppError.from(e, action: 'memuat info toko');
     }
   }
 
@@ -125,7 +190,7 @@ class ApiService {
   Future<bool> checkServerHealth() async {
     try {
       final response = await http.get(
-        Uri.parse('http://10.0.2.2:5000/health'),
+        Uri.parse('${AppConfig.baseUrl}/health'),
         headers: {
           'Content-Type': 'application/json',
         },
@@ -146,10 +211,7 @@ class ApiService {
 
       final response = await http.get(
         Uri.parse('$baseUrl/shops/$shopId/products?page=$page&limit=$limit'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+        headers: await _getAuthHeaders(),
       ).timeout(Duration(seconds: 10));
 
 
@@ -158,17 +220,19 @@ class ApiService {
         if (data['success'] == true) {
           return data['data'];
         } else {
-          throw Exception(data['message'] ?? 'Failed to load products');
+          throw AppError(
+            data['message'] ?? 'Gagal memuat produk',
+            debugMessage: data.toString(),
+          );
         }
       } else {
-        throw Exception('HTTP ${response.statusCode}: Failed to load products');
+        throw AppError(
+          'Gagal memuat produk (HTTP ${response.statusCode})',
+          debugMessage: response.body,
+        );
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal memuat data produk: ${e.toString()}');
+      throw AppError.from(e, action: 'memuat data produk');
     }
   }
 
@@ -179,10 +243,7 @@ class ApiService {
 
       final response = await http.get(
         Uri.parse('$baseUrl/shopee/shops/$shopId/products?offset=$offset&page_size=$pageSize&item_status=$itemStatus'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+        headers: await _getAuthHeaders(),
       ).timeout(Duration(seconds: 15)); // Longer timeout for Shopee batch API
 
 
@@ -191,17 +252,19 @@ class ApiService {
         if (data['success'] == true) {
           return data['data'];
         } else {
-          throw Exception(data['message'] ?? 'Failed to load Shopee products');
+          throw AppError(
+            data['message'] ?? 'Gagal memuat produk Shopee',
+            debugMessage: data.toString(),
+          );
         }
       } else {
-        throw Exception('HTTP ${response.statusCode}: Failed to load Shopee products');
+        throw AppError(
+          'Gagal memuat produk Shopee (HTTP ${response.statusCode})',
+          debugMessage: response.body,
+        );
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal memuat data produk Shopee: ${e.toString()}');
+      throw AppError.from(e, action: 'memuat data produk Shopee');
     }
   }
 
@@ -214,10 +277,7 @@ class ApiService {
 
       final response = await http.get(
         Uri.parse('$baseUrl/shops/$shopId/products/$productId'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+        headers: await _getAuthHeaders(),
       ).timeout(Duration(seconds: 10));
 
 
@@ -226,20 +286,21 @@ class ApiService {
         if (data['success'] == true) {
           return data['data'];
         } else {
-          throw Exception(data['message'] ?? 'Failed to load product detail');
+          throw AppError(
+            data['message'] ?? 'Gagal memuat detail produk',
+            debugMessage: data.toString(),
+          );
         }
       } else if (response.statusCode == 404) {
-        throw Exception('Produk tidak ditemukan');
+        throw AppError('Produk tidak ditemukan', debugMessage: response.body);
       } else {
-        throw Exception(
-            'HTTP ${response.statusCode}: Failed to load product detail');
+        throw AppError(
+          'Gagal memuat detail produk (HTTP ${response.statusCode})',
+          debugMessage: response.body,
+        );
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal memuat detail produk: ${e.toString()}');
+      throw AppError.from(e, action: 'memuat detail produk');
     }
   }
 
@@ -252,10 +313,7 @@ class ApiService {
 
       final response = await http.get(
         Uri.parse('$baseUrl/shopee/shops/$shopId/products/$productId'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+        headers: await _getAuthHeaders(),
       ).timeout(Duration(seconds: 15)); // Longer timeout for Shopee (might call 2 APIs)
 
 
@@ -264,22 +322,26 @@ class ApiService {
         if (data['success'] == true) {
           return data['data'];
         } else {
-          throw Exception(data['message'] ?? 'Failed to load Shopee product detail');
+          throw AppError(
+            data['message'] ?? 'Gagal memuat detail produk Shopee',
+            debugMessage: data.toString(),
+          );
         }
       } else if (response.statusCode == 404) {
-        throw Exception('Produk tidak ditemukan');
+        throw AppError('Produk tidak ditemukan', debugMessage: response.body);
       } else if (response.statusCode == 503) {
-        throw Exception('Shopee API sedang tidak tersedia, coba lagi nanti');
+        throw AppError(
+          'Shopee API sedang tidak tersedia, coba lagi nanti',
+          debugMessage: response.body,
+        );
       } else {
-        throw Exception(
-            'HTTP ${response.statusCode}: Failed to load Shopee product detail');
+        throw AppError(
+          'Gagal memuat detail produk Shopee (HTTP ${response.statusCode})',
+          debugMessage: response.body,
+        );
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal memuat detail produk Shopee: ${e.toString()}');
+      throw AppError.from(e, action: 'memuat detail produk Shopee');
     }
   }
 
@@ -293,10 +355,7 @@ class ApiService {
       final response = await http
           .put(
             Uri.parse('$baseUrl/shopee/shops/$shopId/products/$productId/price'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
+            headers: await _getAuthHeaders(),
             body: json.encode({'skus': skus}),
           )
           .timeout(Duration(seconds: 15));
@@ -311,15 +370,13 @@ class ApiService {
 
         return data['success'] == true;
       } else {
-        throw Exception(
-            'HTTP ${response.statusCode}: Failed to update Shopee product price');
+        throw AppError(
+          'Gagal memperbarui harga produk Shopee (HTTP ${response.statusCode})',
+          debugMessage: response.body,
+        );
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal memperbarui harga produk Shopee: ${e.toString()}');
+      throw AppError.from(e, action: 'memperbarui harga produk Shopee');
     }
   }
 
@@ -333,10 +390,7 @@ class ApiService {
       final response = await http
           .put(
             Uri.parse('$baseUrl/shopee/shops/$shopId/products/$productId/stock'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
+            headers: await _getAuthHeaders(),
             body: json.encode({'skus': skus}),
           )
           .timeout(Duration(seconds: 15));
@@ -351,15 +405,13 @@ class ApiService {
 
         return data['success'] == true;
       } else {
-        throw Exception(
-            'HTTP ${response.statusCode}: Failed to update Shopee product stock');
+        throw AppError(
+          'Gagal memperbarui stok produk Shopee (HTTP ${response.statusCode})',
+          debugMessage: response.body,
+        );
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal memperbarui stok produk Shopee: ${e.toString()}');
+      throw AppError.from(e, action: 'memperbarui stok produk Shopee');
     }
   }
 
@@ -377,10 +429,7 @@ class ApiService {
       final response = await http
           .put(
             Uri.parse('$baseUrl/shopee/shops/$shopId/products/$productId/info'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
+            headers: await _getAuthHeaders(),
             body: json.encode(body),
           )
           .timeout(Duration(seconds: 15));
@@ -390,15 +439,13 @@ class ApiService {
         final Map<String, dynamic> data = json.decode(response.body);
         return data['success'] == true;
       } else {
-        throw Exception(
-            'HTTP ${response.statusCode}: Failed to update Shopee product info');
+        throw AppError(
+          'Gagal memperbarui info produk Shopee (HTTP ${response.statusCode})',
+          debugMessage: response.body,
+        );
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal memperbarui info produk Shopee: ${e.toString()}');
+      throw AppError.from(e, action: 'memperbarui info produk Shopee');
     }
   }
 
@@ -412,10 +459,7 @@ class ApiService {
       final response = await http
           .put(
             Uri.parse('$baseUrl/shopee/shops/$shopId/products/$productId/images'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
+            headers: await _getAuthHeaders(),
             body: json.encode({'image_ids': imageIds}),
           )
           .timeout(Duration(seconds: 15));
@@ -425,15 +469,13 @@ class ApiService {
         final Map<String, dynamic> data = json.decode(response.body);
         return data['success'] == true;
       } else {
-        throw Exception(
-            'HTTP ${response.statusCode}: Failed to update Shopee product images');
+        throw AppError(
+          'Gagal memperbarui gambar produk Shopee (HTTP ${response.statusCode})',
+          debugMessage: response.body,
+        );
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal memperbarui gambar produk Shopee: ${e.toString()}');
+      throw AppError.from(e, action: 'memperbarui gambar produk Shopee');
     }
   }
 
@@ -451,10 +493,7 @@ class ApiService {
       final response = await http
           .put(
             Uri.parse('$baseUrl/shops/$shopId/products/$productId/info'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
+            headers: await _getAuthHeaders(),
             body: json.encode(body),
           )
           .timeout(Duration(seconds: 10));
@@ -464,15 +503,13 @@ class ApiService {
         final Map<String, dynamic> data = json.decode(response.body);
         return data['success'] == true;
       } else {
-        throw Exception(
-            'HTTP ${response.statusCode}: Failed to update product info');
+        throw AppError(
+          'Gagal memperbarui info produk (HTTP ${response.statusCode})',
+          debugMessage: response.body,
+        );
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal memperbarui info produk: ${e.toString()}');
+      throw AppError.from(e, action: 'memperbarui info produk');
     }
   }
 
@@ -486,10 +523,7 @@ class ApiService {
       final response = await http
           .put(
             Uri.parse('$baseUrl/shops/$shopId/products/$productId/price'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
+            headers: await _getAuthHeaders(),
             body: json.encode({'skus': skus}),
           )
           .timeout(Duration(seconds: 10));
@@ -499,15 +533,13 @@ class ApiService {
         final Map<String, dynamic> data = json.decode(response.body);
         return data['success'] == true;
       } else {
-        throw Exception(
-            'HTTP ${response.statusCode}: Failed to update product price');
+        throw AppError(
+          'Gagal memperbarui harga produk (HTTP ${response.statusCode})',
+          debugMessage: response.body,
+        );
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal memperbarui harga produk: ${e.toString()}');
+      throw AppError.from(e, action: 'memperbarui harga produk');
     }
   }
 
@@ -521,10 +553,7 @@ class ApiService {
       final response = await http
           .put(
             Uri.parse('$baseUrl/shops/$shopId/products/$productId/stock'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
+            headers: await _getAuthHeaders(),
             body: json.encode({'skus': skus}),
           )
           .timeout(Duration(seconds: 10));
@@ -534,15 +563,13 @@ class ApiService {
         final Map<String, dynamic> data = json.decode(response.body);
         return data['success'] == true;
       } else {
-        throw Exception(
-            'HTTP ${response.statusCode}: Failed to update product stock');
+        throw AppError(
+          'Gagal memperbarui stok produk (HTTP ${response.statusCode})',
+          debugMessage: response.body,
+        );
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal memperbarui stok produk: ${e.toString()}');
+      throw AppError.from(e, action: 'memperbarui stok produk');
     }
   }
 
@@ -552,10 +579,7 @@ class ApiService {
 
       final response = await http.delete(
         Uri.parse('$baseUrl/shops/$shopId/products/$productId'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+        headers: await _getAuthHeaders(),
       ).timeout(Duration(seconds: 10));
 
 
@@ -563,15 +587,13 @@ class ApiService {
         final Map<String, dynamic> data = json.decode(response.body);
         return data['success'] == true;
       } else {
-        throw Exception(
-            'HTTP ${response.statusCode}: Failed to delete product');
+        throw AppError(
+          'Gagal menghapus produk (HTTP ${response.statusCode})',
+          debugMessage: response.body,
+        );
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal menghapus produk: ${e.toString()}');
+      throw AppError.from(e, action: 'menghapus produk');
     }
   }
 
@@ -591,20 +613,25 @@ class ApiService {
         if (data['success'] == true) {
           return true;
         } else {
-          throw Exception(data['message'] ?? 'Failed to delete product');
+          throw AppError(
+            data['message'] ?? 'Gagal menghapus produk Shopee',
+            debugMessage: data.toString(),
+          );
         }
       } else if (response.statusCode == 404) {
-        throw Exception('Produk tidak ditemukan atau sudah dihapus');
+        throw AppError(
+          'Produk tidak ditemukan atau sudah dihapus',
+          debugMessage: response.body,
+        );
       } else {
         final Map<String, dynamic> data = json.decode(response.body);
-        throw Exception(data['message'] ?? 'Gagal menghapus produk');
+        throw AppError(
+          data['message'] ?? 'Gagal menghapus produk Shopee',
+          debugMessage: response.body,
+        );
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal menghapus produk: ${e.toString()}');
+      throw AppError.from(e, action: 'menghapus produk Shopee');
     }
   }
 
@@ -629,30 +656,43 @@ class ApiService {
         if (data['success'] == true) {
           return true;
         } else {
-          throw Exception(data['message'] ?? 'Failed to ${unlist ? "unlist" : "list"} product');
+          throw AppError(
+            data['message'] ?? 'Gagal mengubah status produk',
+            debugMessage: data.toString(),
+          );
         }
       } else if (response.statusCode == 400) {
         final Map<String, dynamic> data = json.decode(response.body);
         // Handle specific error like "Can't unlist item when item is under promotion"
-        throw Exception(data['message'] ?? 'Gagal mengubah status produk');
+        throw AppError(
+          data['message'] ?? 'Gagal mengubah status produk',
+          debugMessage: data.toString(),
+        );
       } else {
         final Map<String, dynamic> data = json.decode(response.body);
-        throw Exception(data['message'] ?? 'Gagal mengubah status produk');
+        throw AppError(
+          data['message'] ?? 'Gagal mengubah status produk',
+          debugMessage: data.toString(),
+        );
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal mengubah status produk: ${e.toString()}');
+      throw AppError.from(e, action: 'mengubah status produk');
     }
   }
 
   Map<String, String> _getHeaders() {
-    return {
+    final headers = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     };
+
+    final authService = AuthService();
+    if (authService.currentUser != null &&
+        authService.currentUser!.authToken.isNotEmpty) {
+      headers['auth_token'] = authService.currentUser!.authToken;
+    }
+
+    return headers;
   }
 
   // Get categories for specific shop
@@ -672,7 +712,7 @@ class ApiService {
 
       final response = await http.get(
         uri,
-        headers: _getHeaders(),
+        headers: await _getAuthHeaders(),
       );
 
       final Map<String, dynamic> data = json.decode(response.body);
@@ -680,10 +720,13 @@ class ApiService {
       if (response.statusCode == 200) {
         return data;
       } else {
-        throw Exception(data['message'] ?? 'Failed to get categories');
+        throw AppError(
+          data['message'] ?? 'Gagal memuat kategori',
+          debugMessage: data.toString(),
+        );
       }
     } catch (e) {
-      throw Exception('Network error: $e');
+      throw AppError.from(e, action: 'memuat kategori');
     }
   }
 
@@ -707,7 +750,7 @@ class ApiService {
 
       final response = await http.get(
         uri,
-        headers: _getHeaders(),
+        headers: await _getAuthHeaders(),
       );
 
       final Map<String, dynamic> data = json.decode(response.body);
@@ -717,10 +760,13 @@ class ApiService {
             ' Category attributes loaded: ${data['data']?.length ?? 0} attributes');
         return data;
       } else {
-        throw Exception(data['message'] ?? 'Failed to get category attributes');
+        throw AppError(
+          data['message'] ?? 'Gagal memuat atribut kategori',
+          debugMessage: data.toString(),
+        );
       }
     } catch (e) {
-      throw Exception('Network error: $e');
+      throw AppError.from(e, action: 'memuat atribut kategori');
     }
   }
 
@@ -732,7 +778,7 @@ class ApiService {
 
       final response = await http.get(
         uri,
-        headers: _getHeaders(),
+        headers: await _getAuthHeaders(),
       );
 
       final Map<String, dynamic> data = json.decode(response.body);
@@ -740,10 +786,13 @@ class ApiService {
       if (response.statusCode == 200) {
         return data;
       } else {
-        throw Exception(data['message'] ?? 'Failed to get category rules');
+        throw AppError(
+          data['message'] ?? 'Gagal memuat aturan kategori',
+          debugMessage: data.toString(),
+        );
       }
     } catch (e) {
-      throw Exception('Network error: $e');
+      throw AppError.from(e, action: 'memuat aturan kategori');
     }
   }
 
@@ -755,7 +804,7 @@ class ApiService {
 
       final response = await http.get(
         uri,
-        headers: _getHeaders(),
+        headers: await _getAuthHeaders(),
       );
 
       final Map<String, dynamic> data = json.decode(response.body);
@@ -763,11 +812,13 @@ class ApiService {
       if (response.statusCode == 200) {
         return data;
       } else {
-        throw Exception(
-            data['message'] ?? 'Failed to get complete category info');
+        throw AppError(
+          data['message'] ?? 'Gagal memuat info kategori',
+          debugMessage: data.toString(),
+        );
       }
     } catch (e) {
-      throw Exception('Network error: $e');
+      throw AppError.from(e, action: 'memuat info kategori');
     }
   }
 
@@ -783,10 +834,7 @@ class ApiService {
       final response = await http
           .post(
             uri,
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
+            headers: await _getAuthHeaders(),
             body: json.encode(productData),
           )
           .timeout(Duration(seconds: 30)); // Timeout lebih lama untuk create
@@ -797,24 +845,30 @@ class ApiService {
         if (data['success'] == true) {
           return data;
         } else {
-          throw Exception(data['message'] ?? 'Failed to create product');
+          throw AppError(
+            _pickApiErrorMessage(data, 'Gagal membuat produk'),
+            debugMessage: response.body,
+          );
         }
       } else {
         try {
           final errorData = json.decode(response.body);
-          throw Exception(errorData['message'] ??
-              'HTTP ${response.statusCode}: Failed to create product');
+          throw AppError(
+            _pickApiErrorMessage(
+              errorData,
+              'Gagal membuat produk (HTTP ${response.statusCode})',
+            ),
+            debugMessage: response.body,
+          );
         } catch (jsonError) {
-          throw Exception(
-              'HTTP ${response.statusCode}: Failed to create product');
+          throw AppError(
+            'Gagal membuat produk (HTTP ${response.statusCode})',
+            debugMessage: response.body,
+          );
         }
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal membuat produk: ${e.toString()}');
+      throw AppError.from(e, action: 'membuat produk');
     }
   }
 
@@ -824,10 +878,7 @@ class ApiService {
       final response = await http
           .post(
             Uri.parse('$baseUrl/orders/$shopId/list'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
+            headers: await _getAuthHeaders(),
             body: json.encode({'page_size': 20, 'sort_order': 'DESC'}),
           )
           .timeout(Duration(seconds: 15));
@@ -844,17 +895,19 @@ class ApiService {
           }
           return [];
         } else {
-          throw Exception(data['message'] ?? 'Failed to load orders');
+          throw AppError(
+            data['message'] ?? 'Gagal memuat pesanan',
+            debugMessage: data.toString(),
+          );
         }
       } else {
-        throw Exception('HTTP ${response.statusCode}: Server error');
+        throw AppError(
+          'Gagal memuat pesanan (HTTP ${response.statusCode})',
+          debugMessage: response.body,
+        );
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal memuat pesanan: ${e.toString()}');
+      throw AppError.from(e, action: 'memuat pesanan');
     }
   }
 
@@ -864,10 +917,7 @@ class ApiService {
 
       final response = await http.get(
         Uri.parse('$baseUrl/orders/$shopId/detail/$orderId'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+        headers: await _getAuthHeaders(),
       ).timeout(Duration(seconds: 15));
 
 
@@ -883,27 +933,29 @@ class ApiService {
               final orderData = orders[0] as Map<String, dynamic>;
               return Order.fromJson(orderData);
             } else {
-              throw Exception('Order not found in response');
+              throw AppError('Pesanan tidak ditemukan dalam respons');
             }
           }
           // Fallback: coba data langsung jika bukan array
           else if (data['data'] is Map<String, dynamic>) {
             return Order.fromJson(data['data'] as Map<String, dynamic>);
           } else {
-            throw Exception('Invalid response structure - no orders found');
+            throw AppError('Struktur respons tidak valid (order tidak ada)');
           }
         } else {
-          throw Exception(data['message'] ?? 'Failed to load order detail');
+          throw AppError(
+            data['message'] ?? 'Gagal memuat detail pesanan',
+            debugMessage: data.toString(),
+          );
         }
       } else {
-        throw Exception('HTTP ${response.statusCode}: Server error');
+        throw AppError(
+          'Gagal memuat detail pesanan (HTTP ${response.statusCode})',
+          debugMessage: response.body,
+        );
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal memuat detail pesanan: ${e.toString()}');
+      throw AppError.from(e, action: 'memuat detail pesanan');
     }
   }
 
@@ -929,10 +981,7 @@ class ApiService {
       final response = await http
           .post(
             Uri.parse('$baseUrl/shopee/orders/$shopId/list'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
+            headers: await _getAuthHeaders(),
             body: json.encode({
               'time_range_field': 'create_time',
               'time_from': timeFrom ?? defaultTimeFrom,
@@ -956,19 +1005,20 @@ class ApiService {
           }
           return [];
         } else {
-          throw Exception(data['message'] ?? 'Failed to load Shopee orders');
+          throw AppError(
+            data['message'] ?? 'Gagal memuat pesanan Shopee',
+            debugMessage: data.toString(),
+          );
         }
       } else {
         final errorData = json.decode(response.body);
-        throw Exception(
-            errorData['message'] ?? 'HTTP ${response.statusCode}: Server error');
+        throw AppError(
+          errorData['message'] ?? 'Gagal memuat pesanan Shopee',
+          debugMessage: response.body,
+        );
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal memuat pesanan Shopee: ${e.toString()}');
+      throw AppError.from(e, action: 'memuat pesanan Shopee');
     }
   }
 
@@ -980,10 +1030,7 @@ class ApiService {
           .get(
             Uri.parse(
                 '$baseUrl/shopee/orders/$shopId/detail/$orderSn?response_optional_fields=buyer_user_id,buyer_username,estimated_shipping_fee,recipient_address,actual_shipping_fee,item_list,pay_time,package_list,shipping_carrier,payment_method,total_amount'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
+            headers: await _getAuthHeaders(),
           )
           .timeout(Duration(seconds: 15));
 
@@ -1001,27 +1048,26 @@ class ApiService {
               final orderData = orders[0] as Map<String, dynamic>;
               return Order.fromJson(orderData);
             } else {
-              throw Exception('Shopee order not found in response');
+              throw AppError('Pesanan Shopee tidak ditemukan dalam respons');
             }
           } else {
-            throw Exception(
-                'Invalid response structure - no Shopee orders found');
+            throw AppError('Struktur respons tidak valid (order Shopee tidak ada)');
           }
         } else {
-          throw Exception(
-              data['message'] ?? 'Failed to load Shopee order detail');
+          throw AppError(
+            data['message'] ?? 'Gagal memuat detail pesanan Shopee',
+            debugMessage: data.toString(),
+          );
         }
       } else {
         final errorData = json.decode(response.body);
-        throw Exception(
-            errorData['message'] ?? 'HTTP ${response.statusCode}: Server error');
+        throw AppError(
+          errorData['message'] ?? 'Gagal memuat detail pesanan Shopee',
+          debugMessage: response.body,
+        );
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal memuat detail pesanan Shopee: ${e.toString()}');
+      throw AppError.from(e, action: 'memuat detail pesanan Shopee');
     }
   }
 
@@ -1036,10 +1082,7 @@ class ApiService {
       final response = await http
           .post(
             Uri.parse('$baseUrl/shopee/orders/$shopId/ship/$orderSn'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
+            headers: await _getAuthHeaders(),
             body: json.encode(shipmentData),
           )
           .timeout(Duration(seconds: 15));
@@ -1050,15 +1093,20 @@ class ApiService {
         if (data['success'] == true) {
           return data;
         } else {
-          throw Exception(data['message'] ?? 'Failed to ship Shopee order');
+          throw AppError(
+            data['message'] ?? 'Gagal mengirim pesanan Shopee',
+            debugMessage: data.toString(),
+          );
         }
       } else {
         final errorData = json.decode(response.body);
-        throw Exception(
-            errorData['message'] ?? 'HTTP ${response.statusCode}: Server error');
+        throw AppError(
+          errorData['message'] ?? 'Gagal mengirim pesanan Shopee',
+          debugMessage: response.body,
+        );
       }
     } catch (e) {
-      throw Exception('Gagal mengirim pesanan Shopee: ${e.toString()}');
+      throw AppError.from(e, action: 'mengirim pesanan Shopee');
     }
   }
 
@@ -1072,10 +1120,7 @@ class ApiService {
       final response = await http
           .get(
             Uri.parse('$baseUrl/shopee/orders/$shopId/tracking/$orderSn'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
+            headers: await _getAuthHeaders(),
           )
           .timeout(Duration(seconds: 15));
 
@@ -1087,17 +1132,20 @@ class ApiService {
         if (data['success'] == true) {
           return data;
         } else {
-          throw Exception(
-              data['message'] ?? 'Failed to get Shopee tracking number');
+          throw AppError(
+            data['message'] ?? 'Gagal mendapatkan nomor resi Shopee',
+            debugMessage: data.toString(),
+          );
         }
       } else {
         final errorData = json.decode(response.body);
-        throw Exception(
-            errorData['message'] ?? 'HTTP ${response.statusCode}: Server error');
+        throw AppError(
+          errorData['message'] ?? 'Gagal mendapatkan nomor resi Shopee',
+          debugMessage: response.body,
+        );
       }
     } catch (e) {
-      throw Exception(
-          'Gagal mendapatkan nomor tracking Shopee: ${e.toString()}');
+      throw AppError.from(e, action: 'memuat nomor resi Shopee');
     }
   }
 
@@ -1126,9 +1174,9 @@ class ApiService {
       var request = http.MultipartRequest(
           'POST', Uri.parse('$baseUrl/images/$shopId/upload'));
 
-      request.headers.addAll({
-        'Accept': 'application/json',
-      });
+      final authHeaders = await _getAuthHeaders();
+      authHeaders.remove('Content-Type');
+      request.headers.addAll(authHeaders);
 
       // Single file dengan field name 'data' (sesuai TikTok API)
       request.files.add(
@@ -1156,14 +1204,20 @@ class ApiService {
           return responseData[
               'data']; // Contains: uri, url, width, height, use_case
         } else {
-          throw Exception(responseData['message'] ?? 'Failed to upload image');
+          throw AppError(
+            responseData['message'] ?? 'Gagal upload gambar',
+            debugMessage: response.body,
+          );
         }
       } else {
         final errorData = json.decode(response.body);
-        throw Exception(errorData['message'] ?? 'HTTP ${response.statusCode}');
+        throw AppError(
+          errorData['message'] ?? 'Gagal upload gambar',
+          debugMessage: response.body,
+        );
       }
     } catch (e) {
-      throw Exception('Gagal upload gambar: ${e.toString()}');
+      throw AppError.from(e, action: 'upload gambar');
     }
   }
 
@@ -1175,9 +1229,9 @@ class ApiService {
       var request = http.MultipartRequest(
           'POST', Uri.parse('$baseUrl/shopee/images/$shopId/upload'));
 
-      request.headers.addAll({
-        'Accept': 'application/json',
-      });
+      final authHeaders = await _getAuthHeaders();
+      authHeaders.remove('Content-Type');
+      request.headers.addAll(authHeaders);
 
       // Single file dengan field name 'image' (sesuai Shopee API)
       request.files.add(
@@ -1204,14 +1258,20 @@ class ApiService {
         if (responseData['success'] == true) {
           return responseData['data']; // Contains: image_id, image_url, uri, url
         } else {
-          throw Exception(responseData['message'] ?? 'Failed to upload Shopee image');
+          throw AppError(
+            responseData['message'] ?? 'Gagal upload gambar Shopee',
+            debugMessage: response.body,
+          );
         }
       } else {
         final errorData = json.decode(response.body);
-        throw Exception(errorData['message'] ?? 'HTTP ${response.statusCode}');
+        throw AppError(
+          errorData['message'] ?? 'Gagal upload gambar Shopee',
+          debugMessage: response.body,
+        );
       }
     } catch (e) {
-      throw Exception('Gagal upload gambar Shopee: ${e.toString()}');
+      throw AppError.from(e, action: 'upload gambar Shopee');
     }
   }
 
@@ -1234,7 +1294,7 @@ class ApiService {
 
       final response = await http.get(
         uri,
-        headers: _getHeaders(),
+        headers: await _getAuthHeaders(),
       ).timeout(Duration(seconds: 15));
 
       if (response.statusCode == 200) {
@@ -1242,14 +1302,20 @@ class ApiService {
         if (responseData['success'] == true) {
           return responseData;
         } else {
-          throw Exception(responseData['message'] ?? 'Failed to get Shopee categories');
+          throw AppError(
+            responseData['message'] ?? 'Gagal memuat kategori Shopee',
+            debugMessage: response.body,
+          );
         }
       } else {
         final errorData = json.decode(response.body);
-        throw Exception(errorData['message'] ?? 'HTTP ${response.statusCode}');
+        throw AppError(
+          errorData['message'] ?? 'Gagal memuat kategori Shopee',
+          debugMessage: response.body,
+        );
       }
     } catch (e) {
-      throw Exception('Gagal memuat kategori Shopee: ${e.toString()}');
+      throw AppError.from(e, action: 'memuat kategori Shopee');
     }
   }
 
@@ -1271,7 +1337,7 @@ class ApiService {
 
       final response = await http.get(
         uri,
-        headers: _getHeaders(),
+        headers: await _getAuthHeaders(),
       ).timeout(Duration(seconds: 15));
 
       if (response.statusCode == 200) {
@@ -1279,14 +1345,20 @@ class ApiService {
         if (responseData['success'] == true) {
           return responseData;
         } else {
-          throw Exception(responseData['message'] ?? 'Failed to get category attributes');
+          throw AppError(
+            responseData['message'] ?? 'Gagal memuat atribut kategori Shopee',
+            debugMessage: response.body,
+          );
         }
       } else {
         final errorData = json.decode(response.body);
-        throw Exception(errorData['message'] ?? 'HTTP ${response.statusCode}');
+        throw AppError(
+          errorData['message'] ?? 'Gagal memuat atribut kategori Shopee',
+          debugMessage: response.body,
+        );
       }
     } catch (e) {
-      throw Exception('Gagal memuat atribut kategori: ${e.toString()}');
+      throw AppError.from(e, action: 'memuat atribut kategori Shopee');
     }
   }
 
@@ -1314,7 +1386,7 @@ class ApiService {
 
       final response = await http.get(
         uri,
-        headers: _getHeaders(),
+        headers: await _getAuthHeaders(),
       ).timeout(Duration(seconds: 15));
 
       if (response.statusCode == 200) {
@@ -1322,14 +1394,20 @@ class ApiService {
         if (responseData['success'] == true) {
           return responseData;
         } else {
-          throw Exception(responseData['message'] ?? 'Failed to get brand list');
+          throw AppError(
+            responseData['message'] ?? 'Gagal memuat daftar brand Shopee',
+            debugMessage: response.body,
+          );
         }
       } else {
         final errorData = json.decode(response.body);
-        throw Exception(errorData['message'] ?? 'HTTP ${response.statusCode}');
+        throw AppError(
+          errorData['message'] ?? 'Gagal memuat daftar brand Shopee',
+          debugMessage: response.body,
+        );
       }
     } catch (e) {
-      throw Exception('Gagal memuat daftar brand: ${e.toString()}');
+      throw AppError.from(e, action: 'memuat daftar brand Shopee');
     }
   }
 
@@ -1344,7 +1422,7 @@ class ApiService {
 
       final response = await http.get(
         uri,
-        headers: _getHeaders(),
+        headers: await _getAuthHeaders(),
       ).timeout(Duration(seconds: 15));
 
       if (response.statusCode == 200) {
@@ -1352,14 +1430,20 @@ class ApiService {
         if (responseData['success'] == true) {
           return responseData;
         } else {
-          throw Exception(responseData['message'] ?? 'Failed to get logistics channels');
+          throw AppError(
+            responseData['message'] ?? 'Gagal memuat channel logistik Shopee',
+            debugMessage: response.body,
+          );
         }
       } else {
         final errorData = json.decode(response.body);
-        throw Exception(errorData['message'] ?? 'HTTP ${response.statusCode}');
+        throw AppError(
+          errorData['message'] ?? 'Gagal memuat channel logistik Shopee',
+          debugMessage: response.body,
+        );
       }
     } catch (e) {
-      throw Exception('Gagal memuat channel logistik: ${e.toString()}');
+      throw AppError.from(e, action: 'memuat channel logistik Shopee');
     }
   }
 
@@ -1372,7 +1456,7 @@ class ApiService {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/shopee/shops/$shopId/products'),
-        headers: _getHeaders(),
+        headers: await _getAuthHeaders(),
         body: json.encode(productData),
       ).timeout(Duration(seconds: 30));
 
@@ -1384,14 +1468,26 @@ class ApiService {
         if (responseData['success'] == true) {
           return responseData;
         } else {
-          throw Exception(responseData['message'] ?? 'Failed to create Shopee product');
+          throw AppError(
+            _pickApiErrorMessage(
+              responseData,
+              'Gagal membuat produk Shopee',
+            ),
+            debugMessage: response.body,
+          );
         }
       } else {
         final errorData = json.decode(response.body);
-        throw Exception(errorData['message'] ?? 'HTTP ${response.statusCode}');
+        throw AppError(
+          _pickApiErrorMessage(
+            errorData,
+            'Gagal membuat produk Shopee',
+          ),
+          debugMessage: response.body,
+        );
       }
     } catch (e) {
-      throw Exception('Gagal membuat produk Shopee: ${e.toString()}');
+      throw AppError.from(e, action: 'membuat produk Shopee');
     }
   }
 
@@ -1415,7 +1511,7 @@ class ApiService {
 
       final response = await http.get(
         uri,
-        headers: _getHeaders(),
+        headers: await _getAuthHeaders(),
       ).timeout(Duration(seconds: 15));
 
       print(' API Response [Get Shopee Item Limits]: ${response.statusCode}');
@@ -1425,11 +1521,17 @@ class ApiService {
         if (responseData['success'] == true) {
           return responseData['data'] ?? {};
         } else {
-          throw Exception(responseData['message'] ?? 'Failed to get item limits');
+          throw AppError(
+            responseData['message'] ?? 'Gagal memuat batasan item Shopee',
+            debugMessage: response.body,
+          );
         }
       } else {
         final errorData = json.decode(response.body);
-        throw Exception(errorData['message'] ?? 'HTTP ${response.statusCode}');
+        throw AppError(
+          errorData['message'] ?? 'Gagal memuat batasan item Shopee',
+          debugMessage: response.body,
+        );
       }
     } catch (e) {
       print('️ Failed to get item limits (non-critical): $e');
@@ -1446,7 +1548,7 @@ class ApiService {
       {String useCase = 'MAIN_IMAGE'}) async {
     try {
       if (imageFiles.length > 9) {
-        throw Exception('Maksimal 9 gambar per upload');
+        throw AppError('Maksimal 9 gambar per upload');
       }
 
       print(
@@ -1455,9 +1557,9 @@ class ApiService {
       var request = http.MultipartRequest(
           'POST', Uri.parse('$baseUrl/images/$shopId/upload-multiple'));
 
-      request.headers.addAll({
-        'Accept': 'application/json',
-      });
+      final authHeaders = await _getAuthHeaders();
+      authHeaders.remove('Content-Type');
+      request.headers.addAll(authHeaders);
 
       // Multiple files dengan field name 'data'
       for (File imageFile in imageFiles) {
@@ -1486,14 +1588,20 @@ class ApiService {
           return responseData[
               'data']; // Contains: successful_uploads, failed_uploads, counts
         } else {
-          throw Exception(responseData['message'] ?? 'Failed to upload images');
+          throw AppError(
+            responseData['message'] ?? 'Gagal upload gambar',
+            debugMessage: response.body,
+          );
         }
       } else {
         final errorData = json.decode(response.body);
-        throw Exception(errorData['message'] ?? 'HTTP ${response.statusCode}');
+        throw AppError(
+          errorData['message'] ?? 'Gagal upload gambar',
+          debugMessage: response.body,
+        );
       }
     } catch (e) {
-      throw Exception('Gagal upload gambar: ${e.toString()}');
+      throw AppError.from(e, action: 'upload gambar');
     }
   }
 
@@ -1507,10 +1615,7 @@ class ApiService {
       final response = await http
           .put(
             Uri.parse('$baseUrl/shops/$shopId/products/$productId/images'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
+            headers: await _getAuthHeaders(),
             body: json.encode({'images': images}),
           )
           .timeout(Duration(seconds: 10));
@@ -1520,15 +1625,13 @@ class ApiService {
         final Map<String, dynamic> data = json.decode(response.body);
         return data['success'] == true;
       } else {
-        throw Exception(
-            'HTTP ${response.statusCode}: Failed to update product images');
+        throw AppError(
+          'Gagal memperbarui gambar produk (HTTP ${response.statusCode})',
+          debugMessage: response.body,
+        );
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal memperbarui gambar produk: ${e.toString()}');
+      throw AppError.from(e, action: 'memperbarui gambar produk');
     }
   }
 
@@ -1547,9 +1650,7 @@ class ApiService {
 
       final response = await http.get(
         uri,
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: await _getAuthHeaders(),
       );
 
 
@@ -1558,10 +1659,13 @@ class ApiService {
         return data;
       } else {
         final errorData = json.decode(response.body);
-        throw Exception(errorData['message'] ?? 'Failed to get brands');
+        throw AppError(
+          errorData['message'] ?? 'Gagal memuat brand',
+          debugMessage: response.body,
+        );
       }
     } catch (e) {
-      throw Exception('Failed to get brands: $e');
+      throw AppError.from(e, action: 'memuat brand');
     }
   }
 
@@ -1574,9 +1678,7 @@ class ApiService {
 
       final response = await http.post(
         Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: await _getAuthHeaders(),
         body: json.encode({'name': brandName}),
       );
 
@@ -1586,10 +1688,13 @@ class ApiService {
         return data;
       } else {
         final errorData = json.decode(response.body);
-        throw Exception(errorData['message'] ?? 'Failed to create brand');
+        throw AppError(
+          errorData['message'] ?? 'Gagal membuat brand',
+          debugMessage: response.body,
+        );
       }
     } catch (e) {
-      throw Exception('Failed to create brand: $e');
+      throw AppError.from(e, action: 'membuat brand');
     }
   }
 
@@ -1597,17 +1702,20 @@ class ApiService {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/shops/$shopId/warehouses'),
-        headers: {'Content-Type': 'application/json'},
+        headers: await _getAuthHeaders(),
       );
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         return List<Map<String, dynamic>>.from(data['data']);
       } else {
-        throw Exception('Failed to load warehouses');
+        throw AppError(
+          'Gagal memuat gudang (HTTP ${response.statusCode})',
+          debugMessage: response.body,
+        );
       }
     } catch (e) {
-      throw Exception('Failed to load warehouses: $e');
+      throw AppError.from(e, action: 'memuat gudang');
     }
   }
 
@@ -1624,7 +1732,7 @@ class ApiService {
 
       final response = await http.get(
         Uri.parse(url),
-        headers: _getHeaders(),
+        headers: await _getAuthHeaders(),
       );
 
 
@@ -1633,7 +1741,10 @@ class ApiService {
         return data;
       } else {
         final errorData = json.decode(response.body);
-        throw Exception(errorData['message'] ?? 'Failed to get category rules');
+        throw AppError(
+          errorData['message'] ?? 'Gagal memuat aturan kategori',
+          debugMessage: response.body,
+        );
       }
     } catch (e) {
       rethrow;
@@ -1648,7 +1759,7 @@ class ApiService {
   }) async {
     try {
 
-      var url = '$baseUrl/api/categories/$shopId/size-charts';
+      var url = '$baseUrl/categories/$shopId/size-charts';
 
       // Add query parameters
       List<String> queryParams = [];
@@ -1665,7 +1776,7 @@ class ApiService {
 
       final response = await http.get(
         Uri.parse(url),
-        headers: _getHeaders(),
+        headers: await _getAuthHeaders(),
       );
 
 
@@ -1676,8 +1787,10 @@ class ApiService {
         return data;
       } else {
         final errorData = json.decode(response.body);
-        throw Exception(
-            errorData['message'] ?? 'Failed to get size chart templates');
+        throw AppError(
+          errorData['message'] ?? 'Gagal memuat template size chart',
+          debugMessage: response.body,
+        );
       }
     } catch (e) {
       rethrow;
@@ -1717,7 +1830,7 @@ class ApiService {
 
       final response = await http.post(
         Uri.parse(url),
-        headers: _getHeaders(),
+        headers: await _getAuthHeaders(),
         body: json.encode(requestData),
       );
 
@@ -1738,8 +1851,13 @@ class ApiService {
         final errorData = json.decode(response.body);
         print(
             ' API Error [Create Product with Rules]: ${errorData['message']}');
-        throw Exception(
-            errorData['message'] ?? 'Failed to create product with rules');
+        throw AppError(
+          _pickApiErrorMessage(
+            errorData,
+            'Gagal membuat produk (dengan rules)',
+          ),
+          debugMessage: response.body,
+        );
       }
     } catch (e) {
       rethrow;
@@ -1754,10 +1872,7 @@ class ApiService {
 
       final response = await http.post(
         Uri.parse('$baseUrl/shops/$shopId/products/$productId/activate'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+        headers: await _getAuthHeaders(),
       ).timeout(Duration(seconds: 15));
 
 
@@ -1765,15 +1880,13 @@ class ApiService {
         final Map<String, dynamic> data = json.decode(response.body);
         return data['success'] == true;
       } else {
-        throw Exception(
-            'HTTP ${response.statusCode}: Failed to activate product');
+        throw AppError(
+          'Gagal mengaktifkan produk (HTTP ${response.statusCode})',
+          debugMessage: response.body,
+        );
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal mengaktifkan produk: ${e.toString()}');
+      throw AppError.from(e, action: 'mengaktifkan produk');
     }
   }
 
@@ -1785,10 +1898,7 @@ class ApiService {
 
       final response = await http.post(
         Uri.parse('$baseUrl/shops/$shopId/products/$productId/deactivate'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+        headers: await _getAuthHeaders(),
       ).timeout(Duration(seconds: 15));
 
 
@@ -1796,15 +1906,13 @@ class ApiService {
         final Map<String, dynamic> data = json.decode(response.body);
         return data['success'] == true;
       } else {
-        throw Exception(
-            'HTTP ${response.statusCode}: Failed to deactivate product');
+        throw AppError(
+          'Gagal menonaktifkan produk (HTTP ${response.statusCode})',
+          debugMessage: response.body,
+        );
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal menonaktifkan produk: ${e.toString()}');
+      throw AppError.from(e, action: 'menonaktifkan produk');
     }
   }
 
@@ -1816,10 +1924,7 @@ class ApiService {
 
       final response = await http.post(
         Uri.parse('$baseUrl/shops/$shopId/products/$productId/recover'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+        headers: await _getAuthHeaders(),
       ).timeout(Duration(seconds: 15));
 
 
@@ -1827,15 +1932,13 @@ class ApiService {
         final Map<String, dynamic> data = json.decode(response.body);
         return data['success'] == true;
       } else {
-        throw Exception(
-            'HTTP ${response.statusCode}: Failed to recover product');
+        throw AppError(
+          'Gagal mengembalikan produk (HTTP ${response.statusCode})',
+          debugMessage: response.body,
+        );
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal mengembalikan produk: ${e.toString()}');
+      throw AppError.from(e, action: 'mengembalikan produk');
     }
   }
   // Tambah methods ini ke class ApiService
@@ -1867,7 +1970,7 @@ class ApiService {
 
       final response = await http.post(
         Uri.parse(url),
-        headers: _getHeaders(), 
+        headers: await _getAuthHeaders(), 
         body: json.encode(requestBody),
       );
 
@@ -1876,7 +1979,10 @@ class ApiService {
         return json.decode(response.body);
       } else {
         final errorData = json.decode(response.body);
-        throw Exception(errorData['message'] ?? 'Failed to ship package');
+        throw AppError(
+          errorData['message'] ?? 'Gagal mengirim paket',
+          debugMessage: response.body,
+        );
       }
     } catch (e) {
       rethrow;
@@ -1904,15 +2010,17 @@ class ApiService {
 
 
       final response = await http.get(uri,
-          headers: _getHeaders()); 
+          headers: await _getAuthHeaders()); 
 
 
       if (response.statusCode == 200) {
         return json.decode(response.body);
       } else {
         final errorData = json.decode(response.body);
-        throw Exception(
-            errorData['message'] ?? 'Failed to get shipping document');
+        throw AppError(
+          errorData['message'] ?? 'Gagal mengambil dokumen pengiriman',
+          debugMessage: response.body,
+        );
       }
     } catch (e) {
       rethrow;
@@ -1930,7 +2038,7 @@ class ApiService {
 
       final response = await http.get(
         Uri.parse(url),
-        headers: _getHeaders(), 
+        headers: await _getAuthHeaders(), 
       );
 
 
@@ -1938,11 +2046,50 @@ class ApiService {
         return json.decode(response.body);
       } else {
         final errorData = json.decode(response.body);
-        throw Exception(errorData['message'] ?? 'Failed to get package detail');
+        throw AppError(
+          errorData['message'] ?? 'Gagal memuat detail paket',
+          debugMessage: response.body,
+        );
       }
     } catch (e) {
       rethrow;
     }
+  }
+
+  String _pickApiErrorMessage(Map<String, dynamic> data, String fallback) {
+    String? errorMessage;
+
+    final error = data['error'];
+    if (error is String && error.trim().isNotEmpty) {
+      errorMessage = error.trim();
+    } else if (error is Map<String, dynamic>) {
+      final inner = error['message'] ?? error['error'] ?? error['msg'];
+      if (inner is String && inner.trim().isNotEmpty) {
+        errorMessage = inner.trim();
+      }
+    }
+
+    final message = data['message'];
+    if ((errorMessage == null || errorMessage.isEmpty) &&
+        message is String &&
+        message.trim().isNotEmpty) {
+      errorMessage = message.trim();
+    }
+
+    final suggestion = data['suggestion'];
+    final suggestionText = (suggestion is String && suggestion.trim().isNotEmpty)
+        ? suggestion.trim()
+        : null;
+
+    if (errorMessage == null || errorMessage.isEmpty) {
+      errorMessage = fallback;
+    }
+
+    if (suggestionText != null) {
+      return '$errorMessage Saran: $suggestionText';
+    }
+
+    return errorMessage;
   }
 
 // lib/services/api_service.dart - Extension untuk authenticated requests
@@ -1956,8 +2103,21 @@ class ApiService {
 
     // Get current user's auth token
     final authService = AuthService();
-    if (authService.currentUser != null) {
-      headers['auth_token'] = authService.currentUser!.authToken;
+    String? token;
+
+    if (authService.currentUser != null &&
+        authService.currentUser!.authToken.isNotEmpty) {
+      token = authService.currentUser!.authToken;
+    } else {
+      final prefs = await SharedPreferences.getInstance();
+      final currentEmail = prefs.getString('current_user_email');
+      if (currentEmail != null) {
+        token = await authService.getStoredAuthToken(currentEmail);
+      }
+    }
+
+    if (token != null && token.isNotEmpty) {
+      headers['auth_token'] = token;
     }
 
     return headers;
@@ -1981,22 +2141,23 @@ class ApiService {
           final List<dynamic> shopsJson = data['data'];
           return shopsJson.map((json) => Shop.fromJson(json)).toList();
         } else {
-          throw Exception(data['message'] ?? 'Failed to load shops');
+          throw AppError(
+            data['message'] ?? 'Gagal memuat toko',
+            debugMessage: data.toString(),
+          );
         }
       } else if (response.statusCode == 401) {
         // Token expired or invalid - redirect to login
         await AuthService().logout();
-        throw Exception('Session expired. Please login again.');
+        throw AppError('Sesi berakhir, silakan login lagi.');
       } else {
-        throw Exception('HTTP ${response.statusCode}: Server error');
+        throw AppError(
+          'Gagal memuat toko (HTTP ${response.statusCode})',
+          debugMessage: response.body,
+        );
       }
-    } on SocketException {
-      throw Exception(
-          'Tidak dapat terhubung ke server. Pastikan server berjalan di localhost:5000');
-    } on FormatException {
-      throw Exception('Format response tidak valid dari server');
     } catch (e) {
-      throw Exception('Gagal memuat data toko: ${e.toString()}');
+      throw AppError.from(e, action: 'memuat data toko');
     }
   }
 
@@ -2015,20 +2176,24 @@ class ApiService {
         if (data['success'] == true && data['data'] != null) {
           return Shop.fromJson(data['data']);
         } else {
-          throw Exception(data['message'] ?? 'Shop not found');
+          throw AppError(
+            data['message'] ?? 'Toko tidak ditemukan',
+            debugMessage: data.toString(),
+          );
         }
       } else if (response.statusCode == 401) {
         await AuthService().logout();
-        throw Exception('Session expired. Please login again.');
+        throw AppError('Sesi berakhir, silakan login lagi.');
       } else if (response.statusCode == 404) {
-        throw Exception('Toko tidak ditemukan');
+        throw AppError('Toko tidak ditemukan');
       } else {
-        throw Exception('HTTP ${response.statusCode}: Server error');
+        throw AppError(
+          'Gagal memuat info toko (HTTP ${response.statusCode})',
+          debugMessage: response.body,
+        );
       }
-    } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server');
     } catch (e) {
-      throw Exception('Gagal memuat info toko: ${e.toString()}');
+      throw AppError.from(e, action: 'memuat info toko');
     }
   }
 
@@ -2064,13 +2229,19 @@ class ApiService {
           final List<dynamic> shopData = data['data'] ?? [];
           return shopData.map((json) => Shop.fromJson(json)).toList();
         } else {
-          throw Exception(data['message'] ?? 'Failed to get available shops');
+          throw AppError(
+            data['message'] ?? 'Gagal memuat toko yang tersedia',
+            debugMessage: data.toString(),
+          );
         }
       } else {
-        throw Exception('HTTP ${response.statusCode}: Server error');
+        throw AppError(
+          'Gagal memuat toko yang tersedia (HTTP ${response.statusCode})',
+          debugMessage: response.body,
+        );
       }
     } catch (e) {
-      throw Exception('Gagal memuat toko yang tersedia: ${e.toString()}');
+      throw AppError.from(e, action: 'memuat toko yang tersedia');
     }
   }
 

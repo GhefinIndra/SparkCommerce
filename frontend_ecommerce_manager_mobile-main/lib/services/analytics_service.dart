@@ -1,18 +1,37 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
+import '../utils/app_config.dart';
 
 class AnalyticsService {
-  static String get baseUrl => '${dotenv.env['BASE_URL'] ?? 'http://10.0.2.2:5000'}/api/analytics';
+  static String get baseUrl => '${AppConfig.apiBaseUrl}/analytics';
 
   final AuthService _authService = AuthService();
 
   Future<Map<String, String>> _getHeaders() async {
-    return {
+    final headers = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     };
+
+    String? token;
+    if (_authService.currentUser != null &&
+        _authService.currentUser!.authToken.isNotEmpty) {
+      token = _authService.currentUser!.authToken;
+    } else {
+      final prefs = await SharedPreferences.getInstance();
+      final currentEmail = prefs.getString('current_user_email');
+      if (currentEmail != null) {
+        token = await _authService.getStoredAuthToken(currentEmail);
+      }
+    }
+
+    if (token != null && token.isNotEmpty) {
+      headers['auth_token'] = token;
+    }
+
+    return headers;
   }
 
   Future<Map<String, dynamic>> getSalesSummary({

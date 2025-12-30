@@ -1205,13 +1205,16 @@ class _CategorySelectorWidgetState extends State<CategorySelectorWidget>
               ),
             )
           : InkWell(
-              onTap: () => _showCategoryDialog(
-                title: title,
-                icon: icon,
-                items: items,
-                currentValue: value,
-                onChanged: onChanged,
-              ),
+              onTap: () {
+                FocusScope.of(context).unfocus();
+                _showCategoryDialog(
+                  title: title,
+                  icon: icon,
+                  items: items,
+                  currentValue: value,
+                  onChanged: onChanged,
+                );
+              },
               child: Container(
                 padding: EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -1432,7 +1435,10 @@ class _CategorySelectorWidgetState extends State<CategorySelectorWidget>
               ),
             )
           : InkWell(
-              onTap: () => _showBrandDialog(),
+              onTap: () {
+                FocusScope.of(context).unfocus();
+                _showBrandDialog();
+              },
               child: Container(
                 padding: EdgeInsets.all(16),
                 decoration: BoxDecoration(

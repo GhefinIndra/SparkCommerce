@@ -1,6 +1,7 @@
 // src/routes/shopee/authRoutes.js
 const express = require("express");
 const router = express.Router();
+const { authenticateUserToken, verifyShopAccess } = require("../../middleware/auth");
 
 // Import controller dengan error handling
 let authController;
@@ -19,6 +20,7 @@ const requiredFunctions = [
   "getShops",
   "getShopInfo",
   "refreshAccessToken",
+  "deleteShop",
 ];
 
 requiredFunctions.forEach((func) => {
@@ -33,11 +35,12 @@ router.get("/authorize", authController.authorize);
 router.get("/callback", authController.callback);
 
 // Shop management routes (for mobile app)
-router.get("/shops", authController.getShops);
-router.get("/shops/:shopId/info", authController.getShopInfo);
+router.get("/shops", authenticateUserToken, authController.getShops);
+router.get("/shops/:shopId/info", authenticateUserToken, verifyShopAccess, authController.getShopInfo);
+router.delete("/shops/:shopId", authenticateUserToken, verifyShopAccess, authController.deleteShop);
 
 // Token refresh
-router.post("/refresh-token", authController.refreshAccessToken);
+router.post("/refresh-token", authenticateUserToken, verifyShopAccess, authController.refreshAccessToken);
 
 console.log(" Shopee auth routes registered successfully");
 

@@ -1,9 +1,17 @@
 const express = require("express");
 const router = express.Router();
 const OrderController = require("../../controllers/tiktok/orderController");
+const { authenticateUserToken, verifyShopAccess } = require("../../middleware/auth");
+
+const requireNotProduction = (req, res, next) => {
+  if (process.env.NODE_ENV === "production") {
+    return res.status(404).json({ success: false, message: "Not found" });
+  }
+  next();
+};
 
 // Test route
-router.get("/test", async (req, res, next) => {
+router.get("/test", requireNotProduction, async (req, res, next) => {
   try {
     await OrderController.testConnection(req, res);
   } catch (error) {
@@ -12,7 +20,7 @@ router.get("/test", async (req, res, next) => {
 });
 
 // Debug tokens route
-router.get("/debug-tokens", async (req, res, next) => {
+router.get("/debug-tokens", requireNotProduction, async (req, res, next) => {
   try {
     await OrderController.debugTokens(req, res);
   } catch (error) {
@@ -21,7 +29,7 @@ router.get("/debug-tokens", async (req, res, next) => {
 });
 
 // Order list routes
-router.post("/:shopId/list", async (req, res, next) => {
+router.post("/:shopId/list", authenticateUserToken, verifyShopAccess, async (req, res, next) => {
   try {
     await OrderController.getOrderList(req, res);
   } catch (error) {
@@ -29,7 +37,7 @@ router.post("/:shopId/list", async (req, res, next) => {
   }
 });
 
-router.get("/:shopId/list", async (req, res, next) => {
+router.get("/:shopId/list", authenticateUserToken, verifyShopAccess, async (req, res, next) => {
   // Convert query params to body for consistency
   req.body = req.query.filters ? JSON.parse(req.query.filters) : req.query;
 
@@ -41,7 +49,7 @@ router.get("/:shopId/list", async (req, res, next) => {
 });
 
 // Alternative route pattern with query params
-router.post("/list", async (req, res, next) => {
+router.post("/list", authenticateUserToken, verifyShopAccess, async (req, res, next) => {
   try {
     await OrderController.getOrderList(req, res);
   } catch (error) {
@@ -49,7 +57,7 @@ router.post("/list", async (req, res, next) => {
   }
 });
 
-router.get("/list", async (req, res, next) => {
+router.get("/list", authenticateUserToken, verifyShopAccess, async (req, res, next) => {
   // Convert query params to body
   req.body = req.query.filters ? JSON.parse(req.query.filters) : {};
 
@@ -61,7 +69,7 @@ router.get("/list", async (req, res, next) => {
 });
 
 // Order detail routes
-router.get("/:shopId/detail/:orderIds", async (req, res, next) => {
+router.get("/:shopId/detail/:orderIds", authenticateUserToken, verifyShopAccess, async (req, res, next) => {
   try {
     await OrderController.getOrderDetail(req, res);
   } catch (error) {
@@ -69,7 +77,7 @@ router.get("/:shopId/detail/:orderIds", async (req, res, next) => {
   }
 });
 
-router.get("/detail", async (req, res, next) => {
+router.get("/detail", authenticateUserToken, verifyShopAccess, async (req, res, next) => {
   try {
     await OrderController.getOrderDetail(req, res);
   } catch (error) {
@@ -78,7 +86,7 @@ router.get("/detail", async (req, res, next) => {
 });
 
 // Shipping routes
-router.post("/:shopId/packages/:packageId/ship", async (req, res, next) => {
+router.post("/:shopId/packages/:packageId/ship", authenticateUserToken, verifyShopAccess, async (req, res, next) => {
   try {
     await OrderController.shipPackage(req, res);
   } catch (error) {
@@ -88,6 +96,8 @@ router.post("/:shopId/packages/:packageId/ship", async (req, res, next) => {
 
 router.get(
   "/:shopId/packages/:packageId/shipping-document",
+  authenticateUserToken,
+  verifyShopAccess,
   async (req, res, next) => {
     try {
       await OrderController.getShippingDocument(req, res);
@@ -97,7 +107,7 @@ router.get(
   },
 );
 
-router.get("/:shopId/packages/:packageId/detail", async (req, res, next) => {
+router.get("/:shopId/packages/:packageId/detail", authenticateUserToken, verifyShopAccess, async (req, res, next) => {
   try {
     await OrderController.getPackageDetail(req, res);
   } catch (error) {
@@ -106,7 +116,7 @@ router.get("/:shopId/packages/:packageId/detail", async (req, res, next) => {
 });
 
 // Debug route untuk cek semua routes terdaftar
-router.get("/debug-routes", (req, res) => {
+router.get("/debug-routes", requireNotProduction, (req, res) => {
   const routes = [];
 
   router.stack.forEach((layer) => {

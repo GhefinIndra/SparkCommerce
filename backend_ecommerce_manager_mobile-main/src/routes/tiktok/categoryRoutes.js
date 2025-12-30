@@ -9,9 +9,10 @@ console.log(
 );
 
 const router = express.Router();
+const { authenticateUserToken, verifyShopAccess } = require("../../middleware/auth");
 
 // Get main categories
-router.get("/:shop_id", async (req, res) => {
+router.get("/:shop_id", authenticateUserToken, verifyShopAccess, async (req, res) => {
   console.log("DEBUG - Route handler started");
   console.log("DEBUG - req.params:", req.params);
 
@@ -34,15 +35,24 @@ router.get("/:shop_id", async (req, res) => {
 //  ADD: Get category attributes - sesuai frontend call
 router.get(
   "/:shop_id/:category_id/attributes",
+  authenticateUserToken,
+  verifyShopAccess,
   categoryController.getCategoryAttributes,
 );
 
-router.get("/:shop_id/size-charts", categoryController.getSizeChartTemplates);
+router.get(
+  "/:shop_id/size-charts",
+  authenticateUserToken,
+  verifyShopAccess,
+  categoryController.getSizeChartTemplates,
+);
 
 // GET /api/categories/:shop_id/:category_id/rules-with-sizechart
 // Get category rules with size chart validation and templates
 router.get(
   "/:shop_id/:category_id/rules-with-sizechart",
+  authenticateUserToken,
+  verifyShopAccess,
   categoryController.getCategoryRulesWithSizeChart,
 );
 

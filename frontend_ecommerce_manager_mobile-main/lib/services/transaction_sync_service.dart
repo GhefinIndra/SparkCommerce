@@ -1,10 +1,11 @@
 // lib/services/transaction_sync_service.dart
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/order.dart';
 import 'database_service.dart';
+import 'auth_service.dart';
+import '../utils/app_config.dart';
 
 /// Service untuk sync transaksi ke dashboard eksternal
 /// Hanya dipanggil dari ViewOrdersScreen (bukan dari Home/Shop screen)
@@ -15,8 +16,8 @@ class TransactionSyncService {
 
   final DatabaseService _db = DatabaseService();
 
-  // Backend API base URL - read from .env
-  static String get baseUrl => '${dotenv.env['BASE_URL'] ?? 'http://10.0.2.2:5000'}/api';
+  // Backend API base URL - compile-time define (BASE_URL)
+  static String get baseUrl => AppConfig.apiBaseUrl;
 
   /// Main method: Sync transactions to dashboard
   /// Should ONLY be called from ViewOrdersScreen after orders are loaded
@@ -78,8 +79,9 @@ class TransactionSyncService {
       // Step 5: Get auth token for backend request
       final prefs = await SharedPreferences.getInstance();
       final currentEmail = prefs.getString('current_user_email');
-      final tokenKey = 'user_auth_token_${currentEmail!.toLowerCase().replaceAll('@', '_at_').replaceAll('.', '_dot_')}';
-      final authToken = prefs.getString(tokenKey);
+      final authToken = currentEmail != null
+          ? await AuthService().getStoredAuthToken(currentEmail)
+          : null;
 
       // Step 6: Prepare payload
       final payload = {
@@ -115,7 +117,7 @@ class TransactionSyncService {
         Uri.parse('$baseUrl/groups/sync-transactions'),
         headers: {
           'Content-Type': 'application/json',
-          'auth_token': authToken!,
+          'auth_token': authToken ?? '',
         },
         body: json.encode(payload),
       ).timeout(const Duration(seconds: 15));
@@ -161,8 +163,7 @@ class TransactionSyncService {
         return null;
       }
 
-      final tokenKey = 'user_auth_token_${currentEmail.toLowerCase().replaceAll('@', '_at_').replaceAll('.', '_dot_')}';
-      final token = prefs.getString(tokenKey);
+      final token = await AuthService().getStoredAuthToken(currentEmail);
       if (token == null) {
         print(' No auth token found');
         return null;
@@ -200,8 +201,7 @@ class TransactionSyncService {
         return null;
       }
 
-      final tokenKey = 'user_auth_token_${currentEmail.toLowerCase().replaceAll('@', '_at_').replaceAll('.', '_dot_')}';
-      final token = prefs.getString(tokenKey);
+      final token = await AuthService().getStoredAuthToken(currentEmail);
       if (token == null) {
         print(' No auth token found');
         return null;
@@ -209,7 +209,6 @@ class TransactionSyncService {
 
       final url = '$baseUrl/groups/$groupId';
       print(' Requesting group info from: $url');
-      print(' Using auth_token: ${token.substring(0, 10)}...');
 
       final response = await http.get(
         Uri.parse(url),

@@ -1,9 +1,11 @@
 // lib/screens/shop_dashboard_screen.dart - REDESIGNED WITH HOME SCREEN THEME
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/shop.dart';
 import '../services/api_service.dart';
 import '../services/customer_service_api.dart';
+import '../services/oauth_event_service.dart';
 import 'platform_selection_screen.dart';
 import 'manage_products_screen.dart';
 import 'view_order_screen.dart';
@@ -22,11 +24,167 @@ class _ShopDashboardScreenState extends State<ShopDashboardScreen> {
   Map<String, int> chatCounts = {};
   bool _isLoading = true;
   String _errorMessage = '';
+  String? _deletingShopId;
+  StreamSubscription<OAuthEvent>? _oauthEventSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadShops();
+    _listenToOAuthEvents();
+  }
+
+  @override
+  void dispose() {
+    _oauthEventSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _listenToOAuthEvents() {
+    _oauthEventSubscription = OAuthEventService().eventStream.listen((event) {
+      print('🎧 ShopDashboard: Received OAuth event');
+      print('   Success: ${event.success}');
+      print('   Platform: ${event.platform}');
+      print('   Seller: ${event.seller}');
+      
+      if (event.success) {
+        // Auto refresh shop list
+        print('   ♻️ Auto-refreshing shop list...');
+        _loadShops();
+        
+        // Show success dialog
+        Future.delayed(Duration(milliseconds: 500), () {
+          if (mounted) {
+            _showSuccessDialog(
+              platform: event.platform,
+              seller: event.seller,
+              openId: event.openId,
+            );
+          }
+        });
+      } else {
+        // Show error snackbar
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.error_outline, color: Colors.white, size: 20),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      event.errorMessage ?? 'OAuth gagal',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: Colors.red[600],
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              margin: EdgeInsets.all(16),
+            ),
+          );
+        }
+      }
+    });
+  }
+
+  void _showSuccessDialog({
+    required String platform,
+    required String seller,
+    required String openId,
+  }) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Success animation icon
+                Container(
+                  padding: EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.check_circle,
+                    color: Colors.green,
+                    size: 64,
+                  ),
+                ),
+                SizedBox(height: 20),
+                Text(
+                  'Berhasil Terhubung!',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1A237E),
+                  ),
+                ),
+                SizedBox(height: 12),
+                Text(
+                  'Toko $platform Anda berhasil ditambahkan',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: Colors.grey[600],
+                    height: 1.4,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Color(0xFF2196F3).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    seller,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF2196F3),
+                    ),
+                  ),
+                ),
+                SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(dialogContext).pop();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Color(0xFF2196F3),
+                      padding: EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: Text(
+                      'OK',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _loadShops() async {
@@ -171,6 +329,154 @@ class _ShopDashboardScreenState extends State<ShopDashboardScreen> {
 
     if (result == true) {
       await _loadShops();
+    }
+  }
+
+  void _showMessage(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red[400] : Colors.green[600],
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteShop(Shop shop) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.delete_outline_rounded,
+                  color: Colors.red[400],
+                ),
+              ),
+              SizedBox(width: 12),
+              Text(
+                'Hapus Toko',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1A237E),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Toko ini akan dihapus dari aplikasi dan database. Akses OAuth akan dicabut.',
+                style: TextStyle(
+                  color: Colors.grey[700],
+                  height: 1.5,
+                ),
+              ),
+              SizedBox(height: 12),
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.red.withOpacity(0.15)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      shop.name.isNotEmpty ? shop.name : shop.sellerName,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: Colors.red[700],
+                      ),
+                    ),
+                    SizedBox(height: 6),
+                    Text(
+                      'ID: ${shop.id}',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 12,
+                      ),
+                    ),
+                    Text(
+                      shop.platform,
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(
+                'Batal',
+                style: TextStyle(
+                  color: Colors.grey[700],
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red[500],
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(
+                'Hapus',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    setState(() {
+      _deletingShopId = shop.id;
+    });
+
+    try {
+      final success =
+          await _apiService.deleteShop(shop.id, platform: shop.platform);
+
+      if (success) {
+        _showMessage('Toko berhasil dihapus');
+        await _loadShops();
+      } else {
+        _showMessage('Gagal menghapus toko', isError: true);
+      }
+    } catch (e) {
+      _showMessage(e.toString().replaceFirst('Exception: ', ''), isError: true);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _deletingShopId = null;
+        });
+      }
     }
   }
 
@@ -634,6 +940,7 @@ class _ShopDashboardScreenState extends State<ShopDashboardScreen> {
     final productCount = productCounts[shop.id] ?? 0;
     final orderCount = orderCounts[shop.id] ?? 0;
     final chatCount = chatCounts[shop.id] ?? 0;
+    final isDeleting = _deletingShopId == shop.id;
 
     return Container(
       margin: EdgeInsets.only(bottom: 20),
@@ -783,6 +1090,26 @@ class _ShopDashboardScreenState extends State<ShopDashboardScreen> {
                     ],
                   ),
                 ),
+                SizedBox(width: 8),
+                isDeleting
+                    ? SizedBox(
+                        width: 28,
+                        height: 28,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.red[400]!,
+                          ),
+                        ),
+                      )
+                    : IconButton(
+                        icon: Icon(
+                          Icons.delete_outline_rounded,
+                          color: Colors.red[400],
+                        ),
+                        tooltip: 'Hapus toko dari daftar',
+                        onPressed: () => _confirmDeleteShop(shop),
+                      ),
               ],
             ),
           ),

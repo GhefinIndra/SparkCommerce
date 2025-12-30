@@ -11,6 +11,9 @@ UI_UPDATES_SUMMARY.md
 VERIFICATION_REPORT.md
 WEIGHT_UNIT_FIX.md
 
+# Postman collections (contain sensitive API details)
+SparkCommerce_TikTok_API.postman_collection.json
+
 # Database files (jangan push database dengan data)
 *.sql
 *.db

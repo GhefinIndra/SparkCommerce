@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'auth_webview_screen.dart';
+import '../services/oauth_event_service.dart';
 
 class PlatformSelectionScreen extends StatefulWidget {
   @override
@@ -12,6 +14,7 @@ class _PlatformSelectionScreenState extends State<PlatformSelectionScreen>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
+  StreamSubscription<OAuthEvent>? _oauthEventSubscription;
 
   @override
   void initState() {
@@ -30,10 +33,27 @@ class _PlatformSelectionScreenState extends State<PlatformSelectionScreen>
         CurvedAnimation(parent: _animationController, curve: Curves.easeOut));
 
     _animationController.forward();
+    _listenToOAuthEvents();
+  }
+
+  void _listenToOAuthEvents() {
+    _oauthEventSubscription = OAuthEventService().eventStream.listen((event) {
+      print('🎧 PlatformSelection: Received OAuth event');
+      print('   Success: ${event.success}');
+      
+      if (event.success) {
+        // Auto-close this screen and return to dashboard
+        print('   ✅ Auto-closing PlatformSelectionScreen');
+        if (mounted) {
+          Navigator.pop(context, true);
+        }
+      }
+    });
   }
 
   @override
   void dispose() {
+    _oauthEventSubscription?.cancel();
     _animationController.dispose();
     super.dispose();
   }
@@ -102,21 +122,9 @@ class _PlatformSelectionScreenState extends State<PlatformSelectionScreen>
                                     icon: Icons.video_library_rounded,
                                     color: Colors.black,
                                     description:
-                                        'Hubungkan akun TikTok Shop Anda',
+                                        'Hubungkan akun TikTok Shop (termasuk Tokopedia Seller Center)',
                                     onTap: () =>
                                         _openAuthWebView(context, 'tiktok'),
-                                  ),
-
-                                  SizedBox(height: 16),
-
-                                  _buildPlatformCard(
-                                    context,
-                                    platform: 'Tokopedia',
-                                    icon: Icons.store_rounded,
-                                    color: Color(0xFF03AC0E),
-                                    description: 'Hubungkan toko Tokopedia Anda',
-                                    onTap: () =>
-                                        _openAuthWebView(context, 'tiktok', displayName: 'Tokopedia'), // Same API as TikTok Shop, but display as Tokopedia
                                   ),
 
                                   SizedBox(height: 16),
@@ -199,6 +207,8 @@ class _PlatformSelectionScreenState extends State<PlatformSelectionScreen>
                                             'Kelola semua pesanan dalam satu aplikasi'),
                                         _buildInfoItem(
                                             'Sinkronisasi stok otomatis'),
+                                        _buildInfoItem(
+                                            'Tokopedia Seller Center terintegrasi via TikTok Shop'),
                                       ],
                                     ),
                                   ),
@@ -491,7 +501,8 @@ class _PlatformSelectionScreenState extends State<PlatformSelectionScreen>
     );
   }
 
-  void _openAuthWebView(BuildContext context, String platform, {String? displayName}) {
+  void _openAuthWebView(BuildContext context, String platform, {String? displayName}) async {
+    // All platforms use webview for OAuth
     Navigator.push(
       context,
       MaterialPageRoute(
