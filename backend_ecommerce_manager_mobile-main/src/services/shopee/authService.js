@@ -85,16 +85,14 @@ class ShopeeAuthService {
   async getValidToken(shopId) {
     try {
       // Get token from database
-      const tokenRecord = await Token.findOne({
-        where: {
-          shop_id: shopId.toString(),
-          platform: "shopee",
-        },
-      });
+      const tokenRecord = await Token.findByShopId(shopId, null, "shopee");
 
       if (!tokenRecord) {
         throw new Error("Token not found in database");
       }
+
+      const marketplaceShopId =
+        tokenRecord.shop?.marketplace_shop_id || shopId;
 
       // Check if token is expired or will expire soon
       if (this.isTokenExpired(tokenRecord.expire_at)) {
@@ -106,7 +104,7 @@ class ShopeeAuthService {
 
         // Refresh token
         const newTokenData = await this.refreshAccessToken(
-          shopId,
+          marketplaceShopId,
           tokenRecord.refresh_token
         );
 

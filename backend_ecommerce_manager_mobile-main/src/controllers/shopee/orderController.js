@@ -657,12 +657,7 @@ class ShopeeOrderController {
       console.log('- shopId from query:', shopId);
 
       if (shopId) {
-        const tokenRecord = await Token.findOne({
-          where: {
-            shop_id: shopId.toString(),
-            platform: 'shopee',
-          },
-        });
+        const tokenRecord = await Token.findByShopId(shopId, null, 'shopee');
         console.log('- Token found for shopId:', !!tokenRecord);
         console.log('- Access token:', tokenRecord?.access_token ? 'SET' : 'NOT SET');
         console.log('- Shop name:', tokenRecord?.shop_name);

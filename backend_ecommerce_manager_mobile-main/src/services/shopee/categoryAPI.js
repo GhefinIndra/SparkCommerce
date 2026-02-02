@@ -3,9 +3,47 @@ const axios = require('axios');
 const config = require('../../config/env');
 const { buildShopeeParams } = require('../../utils/shopeeSignature');
 
+// In-memory cache for categories (TTL: 1 hour)
+const categoryCache = new Map();
+const CACHE_TTL = 60 * 60 * 1000; // 1 hour in milliseconds
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 2000; // 2 seconds
+const REQUEST_TIMEOUT = 30000; // 30 seconds (increased from 15s)
+
+/**
+ * Simple in-memory cache implementation
+ */
+function getCached(key) {
+  const cached = categoryCache.get(key);
+  if (!cached) return null;
+  
+  // Check if expired
+  if (Date.now() > cached.expiry) {
+    categoryCache.delete(key);
+    return null;
+  }
+  
+  return cached.data;
+}
+
+function setCached(key, data) {
+  categoryCache.set(key, {
+    data,
+    expiry: Date.now() + CACHE_TTL
+  });
+}
+
+/**
+ * Sleep utility for retry delay
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 /**
  * Shopee Category API Service
  * Handles category and attribute-related API calls to Shopee
+ * Features: Caching, Retry Logic, Extended Timeout
  */
 class ShopeeCategoryAPI {
   constructor() {
@@ -15,18 +53,30 @@ class ShopeeCategoryAPI {
   }
 
   /**
-   * Get category tree
+   * Get category tree with caching and retry logic
    * GET /api/v2/product/get_category
    * @param {string} accessToken - Shop access token
    * @param {string} shopId - Shop ID
    * @param {string} language - Language code (default: 'en')
+   * @param {number} retryCount - Current retry attempt (internal use)
    * @returns {Promise<object>} Category list response
    */
-  async getCategories(accessToken, shopId, language = 'en') {
+  async getCategories(accessToken, shopId, language = 'en', retryCount = 0) {
     try {
+      // Check cache first
+      const cacheKey = `categories_${shopId}_${language}`;
+      const cached = getCached(cacheKey);
+      
+      if (cached) {
+        console.log('✅ Using cached categories for shop:', shopId);
+        return cached;
+      }
+
       console.log(' Shopee getCategories request:', {
         shopId,
         language,
+        attempt: retryCount + 1,
+        maxRetries: MAX_RETRIES,
       });
 
       const apiPath = '/api/v2/product/get_category';
@@ -50,7 +100,7 @@ class ShopeeCategoryAPI {
       console.log(' Request URL:', url.substring(0, 150) + '...');
 
       const response = await axios.get(url, {
-        timeout: 15000,
+        timeout: REQUEST_TIMEOUT,
         headers: {
           'Content-Type': 'application/json',
         },
@@ -84,32 +134,53 @@ class ShopeeCategoryAPI {
         throw new Error('Invalid response structure from Shopee API');
       }
 
+      // Cache successful response
+      setCached(cacheKey, response.data);
+      console.log('💾 Cached categories for shop:', shopId);
+
       return response.data;
+      
     } catch (error) {
+      // Handle timeout with retry logic
+      if ((error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') && retryCount < MAX_RETRIES) {
+        console.warn(`⚠️ Timeout on attempt ${retryCount + 1}/${MAX_RETRIES + 1}, retrying in ${RETRY_DELAY}ms...`);
+        await sleep(RETRY_DELAY);
+        return this.getCategories(accessToken, shopId, language, retryCount + 1);
+      }
+
       console.error(' Shopee getCategories error:', error.message);
+      
       if (error.response) {
         console.error('Response data:', error.response.data);
         throw new Error(error.response.data.message || 'Failed to get categories from Shopee');
       }
+      
+      // Provide helpful error message for timeout
+      if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+        throw new Error('Request to Shopee API timed out after multiple retries. Please try again later.');
+      }
+      
       throw error;
     }
   }
 
   /**
-   * Get category attribute tree
+   * Get category attribute tree with retry logic
    * GET /api/v2/product/get_attribute_tree
    * @param {string} accessToken - Shop access token
    * @param {string} shopId - Shop ID
    * @param {number[]} categoryIdList - Array of category IDs (max 20)
    * @param {string} language - Language code (default: 'en')
+   * @param {number} retryCount - Current retry attempt (internal use)
    * @returns {Promise<object>} Attribute tree response
    */
-  async getCategoryAttributes(accessToken, shopId, categoryIdList, language = 'en') {
+  async getCategoryAttributes(accessToken, shopId, categoryIdList, language = 'en', retryCount = 0) {
     try {
       console.log('️ Shopee getCategoryAttributes request:', {
         shopId,
         categoryIds: categoryIdList,
         language,
+        attempt: retryCount + 1,
       });
 
       // Validate category list size
@@ -142,7 +213,7 @@ class ShopeeCategoryAPI {
       console.log(' Request URL:', url.substring(0, 150) + '...');
 
       const response = await axios.get(url, {
-        timeout: 20000, // Longer timeout for batch request
+        timeout: REQUEST_TIMEOUT, // Use same timeout constant
         headers: {
           'Content-Type': 'application/json',
         },
@@ -162,12 +233,27 @@ class ShopeeCategoryAPI {
       }
 
       return response.data;
+      
     } catch (error) {
+      // Handle timeout with retry logic
+      if ((error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') && retryCount < MAX_RETRIES) {
+        console.warn(`⚠️ Attributes timeout on attempt ${retryCount + 1}/${MAX_RETRIES + 1}, retrying in ${RETRY_DELAY}ms...`);
+        await sleep(RETRY_DELAY);
+        return this.getCategoryAttributes(accessToken, shopId, categoryIdList, language, retryCount + 1);
+      }
+
       console.error(' Shopee getCategoryAttributes error:', error.message);
+      
       if (error.response) {
         console.error('Response data:', error.response.data);
         throw new Error(error.response.data.message || 'Failed to get category attributes from Shopee');
       }
+      
+      // Provide helpful error message for timeout
+      if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+        throw new Error('Request to Shopee API timed out after multiple retries. Please try again later.');
+      }
+      
       throw error;
     }
   }

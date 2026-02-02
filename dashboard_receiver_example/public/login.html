@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login Dashboard - SparkCommerce</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="login-body">
+    <main class="login-shell">
+        <section class="login-panel">
+            <div class="login-brand">SparkCommerce</div>
+            <h1>Masuk ke Dashboard</h1>
+            <p class="login-subtitle">
+                Akses monitoring transaksi hanya untuk tim yang berwenang.
+            </p>
+
+            <form class="login-form" method="POST" action="login">
+                <label for="username">Username</label>
+                <input id="username" name="username" type="text" placeholder="Masukkan username" required>
+
+                <label for="password">Password</label>
+                <input id="password" name="password" type="password" placeholder="Masukkan password" required>
+
+                <button type="submit" class="btn-primary full-width">Masuk</button>
+            </form>
+            <div id="loginError" class="login-error" style="display: none;">
+                Username atau password salah.
+            </div>
+
+            <p class="login-hint">
+                Hubungi admin jika Anda belum memiliki akses.
+            </p>
+        </section>
+
+        <section class="login-aside">
+            <div class="aside-card">
+                <span class="eyebrow">Transaction Console</span>
+                <h2>Ringkas, fokus, dan aman.</h2>
+                <p>
+                    Dashboard ini menampilkan metrik transaksi, status order,
+                    dan ringkasan performa marketplace untuk kebutuhan monitoring harian.
+                </p>
+                <div class="aside-stats">
+                    <div>
+                        <span class="stat-caption">Mode</span>
+                        <strong>Production</strong>
+                    </div>
+                    <div>
+                        <span class="stat-caption">Sync</span>
+                        <strong>Realtime</strong>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        if (window.location.search.includes('error=1')) {
+            document.getElementById('loginError').style.display = 'block';
+        }
+    </script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 // models/UserShop.js
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/sequelize");
+const Shop = require("./Shop");
 
 const UserShop = sequelize.define(
   "UserShop",
@@ -15,8 +16,12 @@ const UserShop = sequelize.define(
       allowNull: false,
     },
     shop_id: {
-      type: DataTypes.STRING(255),
+      type: DataTypes.INTEGER,
       allowNull: false,
+      references: {
+        model: "shops",
+        key: "id",
+      },
     },
     role: {
       type: DataTypes.ENUM("owner", "manager", "staff"),
@@ -41,6 +46,8 @@ const UserShop = sequelize.define(
     ],
   },
 );
+
+UserShop.belongsTo(Shop, { foreignKey: "shop_id", as: "shop" });
 
 // Static methods
 UserShop.findUserShops = function (userId) {

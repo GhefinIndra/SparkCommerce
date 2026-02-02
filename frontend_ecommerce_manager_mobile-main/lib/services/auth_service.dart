@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models/user.dart';
 import '../utils/app_config.dart';
+import 'encryption_service.dart';
 
 class AuthService {
   static String get baseUrl => '${AppConfig.apiBaseUrl}/user';
@@ -29,7 +30,7 @@ class AuthService {
       headers['auth_token'] = authToken;
     }
 
-    return headers;
+    return EncryptionService.withEncryptionHeader(headers);
   }
 
   String _getUserTokenKey(String email) {
@@ -66,7 +67,7 @@ class AuthService {
           .timeout(Duration(seconds: 10));
 
       if (response.statusCode == 201) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true && data['data'] != null) {
           return {
             'success': true,
@@ -77,7 +78,7 @@ class AuthService {
           throw Exception(data['message'] ?? 'Registration failed');
         }
       } else if (response.statusCode == 400) {
-        final Map<String, dynamic> errorData = json.decode(response.body);
+        final Map<String, dynamic> errorData = await EncryptionService.decodeResponse(response.body);
         throw Exception(errorData['message'] ?? 'Invalid data provided');
       } else {
         throw Exception('HTTP ${response.statusCode}: Registration failed');
@@ -112,7 +113,7 @@ class AuthService {
           .timeout(Duration(seconds: 10));
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true && data['data'] != null) {
           final userData = data['data'];
 
@@ -132,10 +133,10 @@ class AuthService {
           throw Exception(data['message'] ?? 'Login failed');
         }
       } else if (response.statusCode == 401) {
-        final Map<String, dynamic> errorData = json.decode(response.body);
+        final Map<String, dynamic> errorData = await EncryptionService.decodeResponse(response.body);
         throw Exception(errorData['message'] ?? 'Email atau password salah');
       } else if (response.statusCode == 400) {
-        final Map<String, dynamic> errorData = json.decode(response.body);
+        final Map<String, dynamic> errorData = await EncryptionService.decodeResponse(response.body);
         throw Exception(errorData['message'] ?? 'Data tidak valid');
       } else {
         throw Exception('HTTP ${response.statusCode}: Login failed');
@@ -173,7 +174,7 @@ class AuthService {
           .timeout(Duration(seconds: 10));
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true && data['data'] != null) {
           final userData = data['data'];
           userData['auth_token'] = authToken;
@@ -248,7 +249,7 @@ class AuthService {
 
 
       if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
+        final responseData = await EncryptionService.decodeResponse(response.body);
 
         if (responseData['success'] == true) {
           
@@ -269,7 +270,7 @@ class AuthService {
         await logout();
         throw Exception('Sesi telah berakhir, silakan login kembali');
       } else if (response.statusCode == 422) {
-        final responseData = json.decode(response.body);
+        final responseData = await EncryptionService.decodeResponse(response.body);
         String errorMessage = 'Data tidak valid';
 
         if (responseData['errors'] != null) {
@@ -284,7 +285,7 @@ class AuthService {
 
         throw Exception(errorMessage);
       } else {
-        final responseData = json.decode(response.body);
+        final responseData = await EncryptionService.decodeResponse(response.body);
         throw Exception(
             responseData['message'] ?? 'Server error: ${response.statusCode}');
       }
@@ -341,7 +342,7 @@ class AuthService {
 
 
       if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
+        final responseData = await EncryptionService.decodeResponse(response.body);
 
         if (responseData['success'] == true) {
           
@@ -360,7 +361,7 @@ class AuthService {
           throw Exception(responseData['message'] ?? 'Gagal mengubah password');
         }
       } else if (response.statusCode == 400) {
-        final responseData = json.decode(response.body);
+        final responseData = await EncryptionService.decodeResponse(response.body);
         throw Exception(
             responseData['message'] ?? 'Password saat ini tidak benar');
       } else if (response.statusCode == 401) {
@@ -368,7 +369,7 @@ class AuthService {
         await logout();
         throw Exception('Sesi telah berakhir, silakan login kembali');
       } else if (response.statusCode == 422) {
-        final responseData = json.decode(response.body);
+        final responseData = await EncryptionService.decodeResponse(response.body);
         String errorMessage = 'Data tidak valid';
 
         if (responseData['errors'] != null) {
@@ -383,7 +384,7 @@ class AuthService {
 
         throw Exception(errorMessage);
       } else {
-        final responseData = json.decode(response.body);
+        final responseData = await EncryptionService.decodeResponse(response.body);
         throw Exception(
             responseData['message'] ?? 'Server error: ${response.statusCode}');
       }
@@ -552,3 +553,4 @@ class AuthService {
     await prefs.remove(_currentUserEmailKey);
   }
 }
+

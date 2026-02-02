@@ -10,6 +10,7 @@ import 'package:http_parser/http_parser.dart';
 import '../utils/app_error.dart';
 import '../utils/app_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'encryption_service.dart';
 
 class ApiService {
   // Base URL from compile-time define (BASE_URL)
@@ -32,7 +33,7 @@ class ApiService {
           .timeout(Duration(seconds: 15));
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true && data['data'] != null) {
           return data['data'];
         }
@@ -61,7 +62,7 @@ class ApiService {
             .timeout(Duration(seconds: 10));
 
         if (tiktokResponse.statusCode == 200) {
-          final Map<String, dynamic> data = json.decode(tiktokResponse.body);
+          final Map<String, dynamic> data = await EncryptionService.decodeResponse(tiktokResponse.body);
           if (data['success'] == true && data['data'] != null) {
             final List<dynamic> shopsJson = data['data'];
             final tiktokShops =
@@ -83,7 +84,7 @@ class ApiService {
             .timeout(Duration(seconds: 10));
 
         if (shopeeResponse.statusCode == 200) {
-          final Map<String, dynamic> data = json.decode(shopeeResponse.body);
+          final Map<String, dynamic> data = await EncryptionService.decodeResponse(shopeeResponse.body);
           if (data['success'] == true && data['data'] != null) {
             final List<dynamic> shopsJson = data['data'];
             final shopeeShops =
@@ -115,7 +116,7 @@ class ApiService {
           )
           .timeout(Duration(seconds: 10));
 
-      final Map<String, dynamic> data = json.decode(response.body);
+      final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
 
       if (response.statusCode == 200 && data['success'] == true) {
         return true;
@@ -153,7 +154,7 @@ class ApiService {
           .timeout(Duration(seconds: 10));
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true && data['data'] != null) {
           return Shop.fromJson(data['data']);
         } else {
@@ -216,7 +217,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true) {
           return data['data'];
         } else {
@@ -248,7 +249,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true) {
           return data['data'];
         } else {
@@ -282,7 +283,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true) {
           return data['data'];
         } else {
@@ -318,7 +319,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true) {
           return data['data'];
         } else {
@@ -362,7 +363,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
 
         // Check for partial failures
         if (data['warning'] != null) {
@@ -397,7 +398,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
 
         // Check for partial failures
         if (data['warning'] != null) {
@@ -436,7 +437,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         return data['success'] == true;
       } else {
         throw AppError(
@@ -466,7 +467,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         return data['success'] == true;
       } else {
         throw AppError(
@@ -500,7 +501,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         return data['success'] == true;
       } else {
         throw AppError(
@@ -530,7 +531,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         return data['success'] == true;
       } else {
         throw AppError(
@@ -560,7 +561,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         return data['success'] == true;
       } else {
         throw AppError(
@@ -584,7 +585,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         return data['success'] == true;
       } else {
         throw AppError(
@@ -609,7 +610,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true) {
           return true;
         } else {
@@ -624,7 +625,7 @@ class ApiService {
           debugMessage: response.body,
         );
       } else {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         throw AppError(
           data['message'] ?? 'Gagal menghapus produk Shopee',
           debugMessage: response.body,
@@ -652,7 +653,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true) {
           return true;
         } else {
@@ -662,14 +663,14 @@ class ApiService {
           );
         }
       } else if (response.statusCode == 400) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         // Handle specific error like "Can't unlist item when item is under promotion"
         throw AppError(
           data['message'] ?? 'Gagal mengubah status produk',
           debugMessage: data.toString(),
         );
       } else {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         throw AppError(
           data['message'] ?? 'Gagal mengubah status produk',
           debugMessage: data.toString(),
@@ -715,7 +716,7 @@ class ApiService {
         headers: await _getAuthHeaders(),
       );
 
-      final Map<String, dynamic> data = json.decode(response.body);
+      final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
 
       if (response.statusCode == 200) {
         return data;
@@ -753,7 +754,7 @@ class ApiService {
         headers: await _getAuthHeaders(),
       );
 
-      final Map<String, dynamic> data = json.decode(response.body);
+      final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
 
       if (response.statusCode == 200) {
         print(
@@ -781,7 +782,7 @@ class ApiService {
         headers: await _getAuthHeaders(),
       );
 
-      final Map<String, dynamic> data = json.decode(response.body);
+      final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
 
       if (response.statusCode == 200) {
         return data;
@@ -807,7 +808,7 @@ class ApiService {
         headers: await _getAuthHeaders(),
       );
 
-      final Map<String, dynamic> data = json.decode(response.body);
+      final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
 
       if (response.statusCode == 200) {
         return data;
@@ -841,7 +842,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true) {
           return data;
         } else {
@@ -852,7 +853,7 @@ class ApiService {
         }
       } else {
         try {
-          final errorData = json.decode(response.body);
+          final errorData = await EncryptionService.decodeResponse(response.body);
           throw AppError(
             _pickApiErrorMessage(
               errorData,
@@ -885,7 +886,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true && data['data'] != null) {
           
           final ordersData = data['data']['orders']
@@ -922,7 +923,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
 
         if (data['success'] == true && data['data'] != null) {
           
@@ -997,7 +998,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true && data['data'] != null) {
           final ordersData = data['data']['orders'] as List?;
           if (ordersData != null) {
@@ -1011,7 +1012,7 @@ class ApiService {
           );
         }
       } else {
-        final errorData = json.decode(response.body);
+        final errorData = await EncryptionService.decodeResponse(response.body);
         throw AppError(
           errorData['message'] ?? 'Gagal memuat pesanan Shopee',
           debugMessage: response.body,
@@ -1038,7 +1039,7 @@ class ApiService {
           ' Shopee Order Detail API Response Status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
 
         if (data['success'] == true && data['data'] != null) {
           if (data['data']['orders'] != null &&
@@ -1060,7 +1061,7 @@ class ApiService {
           );
         }
       } else {
-        final errorData = json.decode(response.body);
+        final errorData = await EncryptionService.decodeResponse(response.body);
         throw AppError(
           errorData['message'] ?? 'Gagal memuat detail pesanan Shopee',
           debugMessage: response.body,
@@ -1089,7 +1090,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true) {
           return data;
         } else {
@@ -1099,7 +1100,7 @@ class ApiService {
           );
         }
       } else {
-        final errorData = json.decode(response.body);
+        final errorData = await EncryptionService.decodeResponse(response.body);
         throw AppError(
           errorData['message'] ?? 'Gagal mengirim pesanan Shopee',
           debugMessage: response.body,
@@ -1128,7 +1129,7 @@ class ApiService {
           ' Shopee Tracking Number Response Status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true) {
           return data;
         } else {
@@ -1138,7 +1139,7 @@ class ApiService {
           );
         }
       } else {
-        final errorData = json.decode(response.body);
+        final errorData = await EncryptionService.decodeResponse(response.body);
         throw AppError(
           errorData['message'] ?? 'Gagal mendapatkan nomor resi Shopee',
           debugMessage: response.body,
@@ -1198,7 +1199,7 @@ class ApiService {
           ' Single Upload Response: ${response.statusCode} - ${response.body}');
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = json.decode(response.body);
+        final Map<String, dynamic> responseData = await EncryptionService.decodeResponse(response.body);
         if (responseData['success'] == true) {
           
           return responseData[
@@ -1210,7 +1211,7 @@ class ApiService {
           );
         }
       } else {
-        final errorData = json.decode(response.body);
+        final errorData = await EncryptionService.decodeResponse(response.body);
         throw AppError(
           errorData['message'] ?? 'Gagal upload gambar',
           debugMessage: response.body,
@@ -1254,7 +1255,7 @@ class ApiService {
           ' Shopee Upload Response: ${response.statusCode} - ${response.body}');
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = json.decode(response.body);
+        final Map<String, dynamic> responseData = await EncryptionService.decodeResponse(response.body);
         if (responseData['success'] == true) {
           return responseData['data']; // Contains: image_id, image_url, uri, url
         } else {
@@ -1264,7 +1265,7 @@ class ApiService {
           );
         }
       } else {
-        final errorData = json.decode(response.body);
+        final errorData = await EncryptionService.decodeResponse(response.body);
         throw AppError(
           errorData['message'] ?? 'Gagal upload gambar Shopee',
           debugMessage: response.body,
@@ -1298,7 +1299,7 @@ class ApiService {
       ).timeout(Duration(seconds: 15));
 
       if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
+        final responseData = await EncryptionService.decodeResponse(response.body);
         if (responseData['success'] == true) {
           return responseData;
         } else {
@@ -1308,7 +1309,7 @@ class ApiService {
           );
         }
       } else {
-        final errorData = json.decode(response.body);
+        final errorData = await EncryptionService.decodeResponse(response.body);
         throw AppError(
           errorData['message'] ?? 'Gagal memuat kategori Shopee',
           debugMessage: response.body,
@@ -1341,7 +1342,7 @@ class ApiService {
       ).timeout(Duration(seconds: 15));
 
       if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
+        final responseData = await EncryptionService.decodeResponse(response.body);
         if (responseData['success'] == true) {
           return responseData;
         } else {
@@ -1351,7 +1352,7 @@ class ApiService {
           );
         }
       } else {
-        final errorData = json.decode(response.body);
+        final errorData = await EncryptionService.decodeResponse(response.body);
         throw AppError(
           errorData['message'] ?? 'Gagal memuat atribut kategori Shopee',
           debugMessage: response.body,
@@ -1390,7 +1391,7 @@ class ApiService {
       ).timeout(Duration(seconds: 15));
 
       if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
+        final responseData = await EncryptionService.decodeResponse(response.body);
         if (responseData['success'] == true) {
           return responseData;
         } else {
@@ -1400,7 +1401,7 @@ class ApiService {
           );
         }
       } else {
-        final errorData = json.decode(response.body);
+        final errorData = await EncryptionService.decodeResponse(response.body);
         throw AppError(
           errorData['message'] ?? 'Gagal memuat daftar brand Shopee',
           debugMessage: response.body,
@@ -1426,7 +1427,7 @@ class ApiService {
       ).timeout(Duration(seconds: 15));
 
       if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
+        final responseData = await EncryptionService.decodeResponse(response.body);
         if (responseData['success'] == true) {
           return responseData;
         } else {
@@ -1436,7 +1437,7 @@ class ApiService {
           );
         }
       } else {
-        final errorData = json.decode(response.body);
+        final errorData = await EncryptionService.decodeResponse(response.body);
         throw AppError(
           errorData['message'] ?? 'Gagal memuat channel logistik Shopee',
           debugMessage: response.body,
@@ -1464,7 +1465,7 @@ class ApiService {
       print(' Response body: ${response.body}');
 
       if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
+        final responseData = await EncryptionService.decodeResponse(response.body);
         if (responseData['success'] == true) {
           return responseData;
         } else {
@@ -1477,7 +1478,7 @@ class ApiService {
           );
         }
       } else {
-        final errorData = json.decode(response.body);
+        final errorData = await EncryptionService.decodeResponse(response.body);
         throw AppError(
           _pickApiErrorMessage(
             errorData,
@@ -1517,7 +1518,7 @@ class ApiService {
       print(' API Response [Get Shopee Item Limits]: ${response.statusCode}');
 
       if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
+        final responseData = await EncryptionService.decodeResponse(response.body);
         if (responseData['success'] == true) {
           return responseData['data'] ?? {};
         } else {
@@ -1527,7 +1528,7 @@ class ApiService {
           );
         }
       } else {
-        final errorData = json.decode(response.body);
+        final errorData = await EncryptionService.decodeResponse(response.body);
         throw AppError(
           errorData['message'] ?? 'Gagal memuat batasan item Shopee',
           debugMessage: response.body,
@@ -1582,7 +1583,7 @@ class ApiService {
           ' Multiple Upload Response: ${response.statusCode} - ${response.body}');
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = json.decode(response.body);
+        final Map<String, dynamic> responseData = await EncryptionService.decodeResponse(response.body);
         if (responseData['success'] == true ||
             responseData['data']['successful_count'] > 0) {
           return responseData[
@@ -1594,7 +1595,7 @@ class ApiService {
           );
         }
       } else {
-        final errorData = json.decode(response.body);
+        final errorData = await EncryptionService.decodeResponse(response.body);
         throw AppError(
           errorData['message'] ?? 'Gagal upload gambar',
           debugMessage: response.body,
@@ -1622,7 +1623,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         return data['success'] == true;
       } else {
         throw AppError(
@@ -1655,10 +1656,10 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
+        final data = await EncryptionService.decodeResponse(response.body);
         return data;
       } else {
-        final errorData = json.decode(response.body);
+        final errorData = await EncryptionService.decodeResponse(response.body);
         throw AppError(
           errorData['message'] ?? 'Gagal memuat brand',
           debugMessage: response.body,
@@ -1684,10 +1685,10 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
+        final data = await EncryptionService.decodeResponse(response.body);
         return data;
       } else {
-        final errorData = json.decode(response.body);
+        final errorData = await EncryptionService.decodeResponse(response.body);
         throw AppError(
           errorData['message'] ?? 'Gagal membuat brand',
           debugMessage: response.body,
@@ -1706,7 +1707,7 @@ class ApiService {
       );
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
+        final data = await EncryptionService.decodeResponse(response.body);
         return List<Map<String, dynamic>>.from(data['data']);
       } else {
         throw AppError(
@@ -1737,10 +1738,10 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
+        final data = await EncryptionService.decodeResponse(response.body);
         return data;
       } else {
-        final errorData = json.decode(response.body);
+        final errorData = await EncryptionService.decodeResponse(response.body);
         throw AppError(
           errorData['message'] ?? 'Gagal memuat aturan kategori',
           debugMessage: response.body,
@@ -1781,12 +1782,12 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
+        final data = await EncryptionService.decodeResponse(response.body);
         print(
             ' Size chart templates retrieved: ${data['data']?.length ?? 0} templates');
         return data;
       } else {
-        final errorData = json.decode(response.body);
+        final errorData = await EncryptionService.decodeResponse(response.body);
         throw AppError(
           errorData['message'] ?? 'Gagal memuat template size chart',
           debugMessage: response.body,
@@ -1840,7 +1841,7 @@ class ApiService {
           ' Response body (first 500 chars): ${response.body.length > 500 ? response.body.substring(0, 500) + '...' : response.body}');
 
       if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
+        final responseData = await EncryptionService.decodeResponse(response.body);
 
         // Log warnings if any
         if (responseData['data']?['warnings'] != null) {
@@ -1848,7 +1849,7 @@ class ApiService {
 
         return responseData;
       } else {
-        final errorData = json.decode(response.body);
+        final errorData = await EncryptionService.decodeResponse(response.body);
         print(
             ' API Error [Create Product with Rules]: ${errorData['message']}');
         throw AppError(
@@ -1877,7 +1878,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         return data['success'] == true;
       } else {
         throw AppError(
@@ -1903,7 +1904,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         return data['success'] == true;
       } else {
         throw AppError(
@@ -1929,7 +1930,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         return data['success'] == true;
       } else {
         throw AppError(
@@ -1976,9 +1977,9 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        return json.decode(response.body);
+        return await EncryptionService.decodeResponse(response.body);
       } else {
-        final errorData = json.decode(response.body);
+        final errorData = await EncryptionService.decodeResponse(response.body);
         throw AppError(
           errorData['message'] ?? 'Gagal mengirim paket',
           debugMessage: response.body,
@@ -2014,9 +2015,9 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        return json.decode(response.body);
+        return await EncryptionService.decodeResponse(response.body);
       } else {
-        final errorData = json.decode(response.body);
+        final errorData = await EncryptionService.decodeResponse(response.body);
         throw AppError(
           errorData['message'] ?? 'Gagal mengambil dokumen pengiriman',
           debugMessage: response.body,
@@ -2043,9 +2044,9 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        return json.decode(response.body);
+        return await EncryptionService.decodeResponse(response.body);
       } else {
-        final errorData = json.decode(response.body);
+        final errorData = await EncryptionService.decodeResponse(response.body);
         throw AppError(
           errorData['message'] ?? 'Gagal memuat detail paket',
           debugMessage: response.body,
@@ -2120,7 +2121,7 @@ class ApiService {
       headers['auth_token'] = token;
     }
 
-    return headers;
+    return EncryptionService.withEncryptionHeader(headers);
   }
 
   // Updated getShops method dengan authentication
@@ -2136,7 +2137,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true && data['data'] != null) {
           final List<dynamic> shopsJson = data['data'];
           return shopsJson.map((json) => Shop.fromJson(json)).toList();
@@ -2172,7 +2173,7 @@ class ApiService {
           .timeout(Duration(seconds: 10));
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true && data['data'] != null) {
           return Shop.fromJson(data['data']);
         } else {
@@ -2224,7 +2225,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true) {
           final List<dynamic> shopData = data['data'] ?? [];
           return shopData.map((json) => Shop.fromJson(json)).toList();
@@ -2258,7 +2259,7 @@ class ApiService {
 
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true) {
           return {
             'success': true,
@@ -2285,3 +2286,4 @@ class ApiService {
     }
   }
 }
+

@@ -43,6 +43,9 @@ dependencies:
   # JSON handling
   json_annotation: ^4.8.1
 
+  # Encryption (AES-GCM for payload decryption)
+  cryptography: ^2.7.0
+
   # UI components
   flutter_slidable: ^3.0.1
   pull_to_refresh: ^2.0.0
@@ -54,6 +57,7 @@ dev_dependencies:
   flutter_lints: ^4.0.0
   json_serializable: ^6.7.1
   build_runner: ^2.4.7
+  flutter_launcher_icons: ^0.13.1
 
 flutter:
   uses-material-design: true
@@ -66,3 +70,13 @@ flutter:
   #   - family: Schyler
   #     fonts:
   #       - asset: fonts/Schyler-Regular.ttf
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/logo.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/logo.png"
+  web:
+    generate: true
+    image_path: "assets/logo.png"

@@ -76,7 +76,7 @@ const imageUploadController = {
 
       // Get shop token data
       const Token = require("../../models/Token");
-      const tokenData = await Token.findByShopId(shop_id);
+      const tokenData = await Token.findByShopId(shop_id, null, "tiktok");
       if (!tokenData) {
         return res.status(404).json({
           success: false,
@@ -214,7 +214,7 @@ const imageUploadController = {
 
       // Get shop token data once
       const Token = require("../../models/Token");
-      const tokenData = await Token.findByShopId(shop_id);
+      const tokenData = await Token.findByShopId(shop_id, null, "tiktok");
       if (!tokenData) {
         return res.status(404).json({
           success: false,

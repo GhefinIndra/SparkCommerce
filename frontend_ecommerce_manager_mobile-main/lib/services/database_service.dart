@@ -125,6 +125,21 @@ class DatabaseService {
       )
     ''');
 
+    // Tabel 2b: Transaction sync log (dashboard sync tracking)
+    await db.execute('''
+      CREATE TABLE transaction_sync_log (
+        shop_id TEXT NOT NULL,
+        platform TEXT NOT NULL,
+        last_synced_order_id TEXT,
+        last_synced_order_time INTEGER,
+        last_sync_at INTEGER,
+        total_orders_synced INTEGER DEFAULT 0,
+        last_sync_status TEXT DEFAULT 'PENDING',
+        error_message TEXT,
+        PRIMARY KEY (shop_id, platform)
+      )
+    ''');
+
     // Tabel 3: Mapping SKU ke Marketplace
     await db.execute('''
       CREATE TABLE sku_marketplace_mapping (
@@ -145,6 +160,7 @@ class DatabaseService {
     await db.execute('CREATE INDEX idx_orders_shop_provider ON orders(shop_id, provider)');
     await db.execute('CREATE INDEX idx_orders_create_time ON orders(create_time DESC)');
     await db.execute('CREATE INDEX idx_mapping_sku ON sku_marketplace_mapping(sku)');
+    await db.execute('CREATE INDEX idx_sync_log_shop ON transaction_sync_log(shop_id)');
 
   }
 

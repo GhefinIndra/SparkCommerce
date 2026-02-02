@@ -32,7 +32,7 @@ router.get(
   try {
     const { shopId } = req.params;
 
-    const token = await Token.findByShopId(shopId);
+    const token = await Token.findByShopId(shopId, null, "tiktok");
     if (!token) {
       return res.status(404).json({
         success: false,

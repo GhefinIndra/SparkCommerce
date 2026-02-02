@@ -1,8 +1,8 @@
-import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import '../utils/app_config.dart';
+import 'encryption_service.dart';
 
 class AnalyticsService {
   static String get baseUrl => '${AppConfig.apiBaseUrl}/analytics';
@@ -31,7 +31,7 @@ class AnalyticsService {
       headers['auth_token'] = token;
     }
 
-    return headers;
+    return EncryptionService.withEncryptionHeader(headers);
   }
 
   Future<Map<String, dynamic>> getSalesSummary({
@@ -66,7 +66,7 @@ class AnalyticsService {
       final response = await http.get(uri, headers: headers);
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true) {
           return data['data'];
         } else {
@@ -112,7 +112,7 @@ class AnalyticsService {
       final response = await http.get(uri, headers: headers);
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true) {
           return List<Map<String, dynamic>>.from(data['data']);
         } else {
@@ -156,7 +156,7 @@ class AnalyticsService {
       final response = await http.get(uri, headers: headers);
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true) {
           return data['data'];
         } else {
@@ -204,7 +204,7 @@ class AnalyticsService {
       final response = await http.get(uri, headers: headers);
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true) {
           return List<Map<String, dynamic>>.from(data['data']);
         } else {
@@ -227,7 +227,7 @@ class AnalyticsService {
       final response = await http.get(uri, headers: headers);
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true) {
           return data['data'];
         } else {
@@ -264,7 +264,7 @@ class AnalyticsService {
       final response = await http.get(uri, headers: headers);
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true) {
           return List<Map<String, dynamic>>.from(data['data']);
         } else {
@@ -278,3 +278,4 @@ class AnalyticsService {
     }
   }
 }
+

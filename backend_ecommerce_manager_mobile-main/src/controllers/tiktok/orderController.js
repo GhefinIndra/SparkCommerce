@@ -1,8 +1,12 @@
 const OrderService = require("../../services/tiktok/orderService");
 const Token = require("../../models/Token");
+const Shop = require("../../models/Shop");
 const Group = require('../../models/Group');
 const axios = require('axios');
 const { Op } = require("sequelize"); 
+
+const getPublicShopId = (token, fallback = null) =>
+  token?.marketplace_shop_id || token?.shop_id || fallback;
 
 class OrderController {
   // Transform methods remain the same...
@@ -416,14 +420,13 @@ class OrderController {
       console.log("- shop_cipher from query:", shop_cipher);
 
       if (sellerId) {
-        const tokenRecord = await Token.findOne({
-          where: {
-            [Op.or]: [{ seller_id: sellerId }, { shop_id: sellerId }],
-            access_token: {
-              [Op.ne]: null,
-            },
-          },
-        });
+        const shopRecord =
+          (await Shop.findOne({ where: { seller_id: sellerId } })) ||
+          (await Shop.findOne({ where: { marketplace_shop_id: sellerId } }));
+
+        const tokenRecord = shopRecord
+          ? await Token.findByShopId(shopRecord.id, null, "tiktok")
+          : null;
         console.log("- Token found for sellerId:", !!tokenRecord);
         console.log(
           "- Access token:",
@@ -435,9 +438,12 @@ class OrderController {
         );
         console.log("- Shop name:", tokenRecord?.shop_name);
       } else if (shop_cipher) {
-        const tokenRecord = await Token.findOne({
+        const shopRecord = await Shop.findOne({
           where: { shop_cipher },
         });
+        const tokenRecord = shopRecord
+          ? await Token.findByShopId(shopRecord.id, null, "tiktok")
+          : null;
         console.log("- Token found for shop_cipher:", !!tokenRecord);
       }
 
@@ -532,14 +538,7 @@ class OrderController {
 
       console.log("Step 1: Looking for token by sellerId...");
 
-      const token = await Token.findOne({
-        where: {
-          shop_id: sellerId, //  Only search by shop_id to get exact shop
-          access_token: {
-            [Op.ne]: null, //  Sequelize operator for "not null"
-          },
-        },
-      });
+      const token = await Token.findByShopId(sellerId, null, "tiktok");
 
       console.log("Step 1 result - token found:", !!token);
 
@@ -553,7 +552,7 @@ class OrderController {
         });
       }
 
-      if (!token) {
+      if (!token || !token.access_token) {
         console.log("ERROR: No token found for sellerId:", sellerId);
         return res.status(404).json({
           success: false,
@@ -581,13 +580,18 @@ class OrderController {
         console.log("Step 4: Data transformation completed");
         console.log("Transformed orders count:", transformedData.orders.length);
 
+        const publicShopId = getPublicShopId(token, sellerId);
+        const sellerIdentifier =
+          token.seller_id || token.marketplace_shop_id || sellerId;
+
         res.json({
           success: true,
           data: transformedData,
           seller: {
-            sellerId: sellerId,
+            sellerId: sellerIdentifier,
             shopName: token.shop_name,
-            shopId: token.shop_id,
+            shopId: publicShopId,
+            internalShopId: token.shop_id,
             shopCipher: token.shop_cipher,
           },
         });
@@ -609,10 +613,10 @@ class OrderController {
   }
 
   async syncToGroupDashboard(tokenRecord, orders) {
-  try {
-    // Cari user berdasarkan shop untuk dapat group_id
-    const UserShop = require('../../models/UserShop');
-    const User = require('../../models/User');
+    try {
+      // Cari user berdasarkan shop untuk dapat group_id
+      const UserShop = require('../../models/UserShop');
+      const User = require('../../models/User');
     
     const userShop = await UserShop.findOne({ 
       where: { shop_id: tokenRecord.shop_id }
@@ -642,7 +646,7 @@ class OrderController {
       const response = await axios.post(group.url, {
         orders: orders,
         shop_info: {
-          shop_id: tokenRecord.shop_id,
+          shop_id: getPublicShopId(tokenRecord),
           shop_name: tokenRecord.shop_name
         },
         secret: group.secret
@@ -687,19 +691,13 @@ class OrderController {
 
       if (shopId) {
         console.log("Looking for token by shopId:", shopId);
-        tokenRecord = await Token.findOne({
-          where: {
-            shop_id: shopId,
-            access_token: {
-              [Op.ne]: null,
-            },
-          },
-        });
+        tokenRecord = await Token.findByShopId(shopId, null, "tiktok");
       } else if (shop_cipher) {
         console.log("Looking for token by shop_cipher:", shop_cipher);
-        tokenRecord = await Token.findOne({
-          where: { shop_cipher },
-        });
+        const shopRecord = await Shop.findOne({ where: { shop_cipher } });
+        tokenRecord = shopRecord
+          ? await Token.findByShopId(shopRecord.id, null, "tiktok")
+          : null;
       }
 
       if (!tokenRecord) {
@@ -726,13 +724,16 @@ class OrderController {
 
       const transformedData = this.transformOrderData(rawOrderDetail);
 
+      const publicShopId = getPublicShopId(tokenRecord, shopId);
+
       res.json({
         success: true,
         data: transformedData,
         seller: {
-          sellerId: tokenRecord.seller_id || tokenRecord.shop_id,
+          sellerId: tokenRecord.seller_id || tokenRecord.marketplace_shop_id,
           shopName: tokenRecord.shop_name,
-          shopId: tokenRecord.shop_id,
+          shopId: publicShopId,
+          internalShopId: tokenRecord.shop_id,
           shopCipher: tokenRecord.shop_cipher,
         },
       });
@@ -756,16 +757,9 @@ class OrderController {
         });
       }
 
-      const token = await Token.findOne({
-        where: {
-          shop_id: sellerId,
-          access_token: {
-            [Op.ne]: null,
-          },
-        },
-      });
+      const token = await Token.findByShopId(sellerId, null, "tiktok");
 
-      if (!token) {
+      if (!token || !token.access_token) {
         return res.status(404).json({
           success: false,
           message: "Token not found",
@@ -818,16 +812,9 @@ class OrderController {
         });
       }
 
-      const tokenRecord = await Token.findOne({
-        where: {
-          shop_id: shopId,
-          access_token: {
-            [Op.ne]: null,
-          },
-        },
-      });
+      const tokenRecord = await Token.findByShopId(shopId, null, "tiktok");
 
-      if (!tokenRecord) {
+      if (!tokenRecord || !tokenRecord.access_token) {
         return res.status(404).json({
           success: false,
           message: "Shop token not found",
@@ -975,16 +962,9 @@ class OrderController {
       }
 
       // Find token
-      const tokenRecord = await Token.findOne({
-        where: {
-          shop_id: shopId,
-          access_token: {
-            [Op.ne]: null,
-          },
-        },
-      });
+      const tokenRecord = await Token.findByShopId(shopId, null, "tiktok");
 
-      if (!tokenRecord) {
+      if (!tokenRecord || !tokenRecord.access_token) {
         return res.status(404).json({
           success: false,
           message: "Shop token not found",
@@ -1038,16 +1018,9 @@ class OrderController {
       }
 
       // Find token
-      const tokenRecord = await Token.findOne({
-        where: {
-          shop_id: shopId,
-          access_token: {
-            [Op.ne]: null,
-          },
-        },
-      });
+      const tokenRecord = await Token.findByShopId(shopId, null, "tiktok");
 
-      if (!tokenRecord) {
+      if (!tokenRecord || !tokenRecord.access_token) {
         return res.status(404).json({
           success: false,
           message: "Shop token not found",

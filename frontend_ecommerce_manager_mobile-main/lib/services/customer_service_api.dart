@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/conversation.dart';
 import '../services/auth_service.dart';
 import '../utils/app_config.dart';
+import 'encryption_service.dart';
 
 class CustomerServiceApiService {
   static String get baseUrl => '${AppConfig.apiBaseUrl}/customer-service';
@@ -33,7 +34,7 @@ class CustomerServiceApiService {
       headers['auth_token'] = token;
     }
 
-    return headers;
+    return EncryptionService.withEncryptionHeader(headers);
   }
 
   static Future<Map<String, dynamic>> getConversations(
@@ -53,7 +54,7 @@ class CustomerServiceApiService {
           .replace(queryParameters: queryParams);
 
       final response = await http.get(uri, headers: await _getAuthHeaders());
-      final data = jsonDecode(response.body);
+      final data = await EncryptionService.decodeResponse(response.body);
 
       if (response.statusCode == 200 && data['success']) {
         final conversations = (data['data']['conversations'] as List)
@@ -94,7 +95,7 @@ class CustomerServiceApiService {
               .replace(queryParameters: queryParams);
 
       final response = await http.get(uri, headers: await _getAuthHeaders());
-      final data = jsonDecode(response.body);
+      final data = await EncryptionService.decodeResponse(response.body);
 
       if (response.statusCode == 200 && data['success']) {
         final messages = (data['data']['messages'] as List)
@@ -128,7 +129,7 @@ class CustomerServiceApiService {
         }),
       );
 
-      final data = jsonDecode(response.body);
+      final data = await EncryptionService.decodeResponse(response.body);
 
       if (response.statusCode == 200 && data['success']) {
         return {
@@ -160,7 +161,7 @@ class CustomerServiceApiService {
         }),
       );
 
-      final data = jsonDecode(response.body);
+      final data = await EncryptionService.decodeResponse(response.body);
 
       if (response.statusCode == 200 && data['success']) {
         return {
@@ -186,7 +187,7 @@ class CustomerServiceApiService {
         headers: await _getAuthHeaders(),
       );
 
-      final data = jsonDecode(response.body);
+      final data = await EncryptionService.decodeResponse(response.body);
 
       if (response.statusCode == 200 && data['success']) {
         return {'success': true};
@@ -219,7 +220,7 @@ class CustomerServiceApiService {
 
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
-      final data = jsonDecode(response.body);
+      final data = await EncryptionService.decodeResponse(response.body);
 
       if (response.statusCode == 200 && data['success']) {
         return {
@@ -264,3 +265,4 @@ class CustomerServiceApiService {
     return sendMessage(shopId, conversationId, 'ORDER_CARD', content);
   }
 }
+

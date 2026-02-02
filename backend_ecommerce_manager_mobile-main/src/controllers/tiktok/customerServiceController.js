@@ -11,7 +11,7 @@ class CustomerServiceController {
 
       console.log(` Getting conversations for shop: ${shopId}`);
 
-      const token = await Token.findByShopId(shopId);
+      const token = await Token.findByShopId(shopId, null, "tiktok");
 
       if (!token) {
         return res.status(404).json({
@@ -92,7 +92,7 @@ class CustomerServiceController {
 
       console.log(` Getting messages for conversation: ${conversationId}`);
 
-      const token = await Token.findByShopId(shopId);
+      const token = await Token.findByShopId(shopId, null, "tiktok");
 
       if (!token) {
         return res.status(404).json({
@@ -161,7 +161,7 @@ class CustomerServiceController {
 
       console.log(` Creating conversation for buyer: ${buyer_user_id}`);
 
-      const token = await Token.findByShopId(shopId);
+      const token = await Token.findByShopId(shopId, null, "tiktok");
 
       if (!token) {
         return res.status(404).json({
@@ -214,7 +214,7 @@ class CustomerServiceController {
         ` Sending ${type} message to conversation: ${conversationId}`,
       );
 
-      const token = await Token.findByShopId(shopId);
+      const token = await Token.findByShopId(shopId, null, "tiktok");
 
       if (!token) {
         return res.status(404).json({
@@ -261,7 +261,7 @@ class CustomerServiceController {
         `️ Marking messages as read for conversation: ${conversationId}`,
       );
 
-      const token = await Token.findByShopId(shopId);
+      const token = await Token.findByShopId(shopId, null, "tiktok");
 
       if (!token) {
         return res.status(404).json({
@@ -308,7 +308,7 @@ class CustomerServiceController {
 
       console.log(`️ Uploading image for shop: ${shopId}`);
 
-      const token = await Token.findByShopId(shopId);
+      const token = await Token.findByShopId(shopId, null, "tiktok");
 
       if (!token) {
         return res.status(404).json({

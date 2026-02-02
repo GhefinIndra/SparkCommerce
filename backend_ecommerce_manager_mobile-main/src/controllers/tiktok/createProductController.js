@@ -21,7 +21,7 @@ const createProductController = {
       );
 
       // Get shop token data
-      const tokenData = await Token.findByShopId(shop_id);
+      const tokenData = await Token.findByShopId(shop_id, null, "tiktok");
       if (!tokenData) {
         return res.status(404).json({
           success: false,
@@ -195,7 +195,7 @@ const createProductController = {
       }
 
       // Get shop token data
-      const tokenData = await Token.findByShopId(shop_id);
+      const tokenData = await Token.findByShopId(shop_id, null, "tiktok");
       if (!tokenData) {
         return res.status(404).json({
           success: false,
@@ -305,7 +305,7 @@ const createProductController = {
       console.log(" DEBUG - Product data keys:", Object.keys(productData));
 
       // Get shop token
-      const token = await Token.findByShopId(shop_id);
+      const token = await Token.findByShopId(shop_id, null, "tiktok");
       if (!token) {
         console.error(" No token found for shop_id:", shop_id);
         return res.status(404).json({

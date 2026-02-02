@@ -1,6 +1,7 @@
 const Token = require("../../models/Token");
 const User = require("../../models/User");
 const UserShop = require("../../models/UserShop");
+const Shop = require("../../models/Shop");
 const { generateTikTokSignature } = require("../../utils/tiktokSignature");
 const config = require("../../config/env");
 const { Op } = require("sequelize"); // Tambahkan ini di bagian import
@@ -16,6 +17,10 @@ function formatDate(date) {
   if (hours < 24) return `${hours} jam lalu`;
   if (days < 7) return `${days} hari lalu`;
   return new Date(date).toLocaleDateString("id-ID");
+}
+
+function getPublicShopId(token) {
+  return token?.marketplace_shop_id || token?.shop_id || null;
 }
 
 // Helper function to get user from auth token - FIXED
@@ -40,7 +45,7 @@ async function getUserFromAuthToken(authToken) {
 }
 
 // Function untuk mengambil shop info
-async function fetchShopInfoWithSignature(accessToken, openId) {
+async function fetchShopInfoWithSignature(accessToken, openId, sellerMeta = {}) {
   try {
     console.log(" Fetching shop info with signature...");
 
@@ -83,14 +88,27 @@ async function fetchShopInfoWithSignature(accessToken, openId) {
       if (shops.length > 0) {
         const firstShop = shops[0];
 
-        const updateData = {
-          shop_id: firstShop.id,
+        const shopPayload = {
+          marketplace_platform: "tiktok",
+          marketplace_shop_id: firstShop.id?.toString(),
           shop_code: firstShop.code,
           shop_name: firstShop.name,
           shop_cipher: firstShop.cipher,
           shop_region: firstShop.region,
           seller_type: firstShop.seller_type,
-          seller_id: firstShop.id,
+          seller_id: firstShop.id?.toString(),
+          seller_name: sellerMeta.seller_name,
+          region: sellerMeta.region,
+        };
+
+        const shopRecord = await Shop.findOrCreateByMarketplace(
+          "tiktok",
+          firstShop.id?.toString(),
+          shopPayload,
+        );
+
+        const updateData = {
+          shop_id: shopRecord.id,
           status: "active",
           updated_at: new Date(),
         };
@@ -189,9 +207,6 @@ exports.callback = async (req, res) => {
         open_id: responseData.open_id,
         access_token: responseData.access_token,
         refresh_token: responseData.refresh_token,
-        seller_name: responseData.seller_name,
-        region: responseData.seller_base_region,
-        user_type: responseData.user_type,
         granted_scopes: responseData.granted_scopes,
         status: "pending",
         expire_at: new Date(responseData.access_token_expire_in * 1000),
@@ -204,6 +219,10 @@ exports.callback = async (req, res) => {
       await fetchShopInfoWithSignature(
         responseData.access_token,
         responseData.open_id,
+        {
+          seller_name: responseData.seller_name,
+          region: responseData.seller_base_region,
+        },
       );
 
       if (state && state !== "no_user") {
@@ -261,8 +280,12 @@ exports.callback = async (req, res) => {
       }
 
       // Redirect to success page (WebView will detect /success URL)
+      const tokenWithShop = await Token.findByOpenId(responseData.open_id);
+      const marketplaceShopId = tokenWithShop?.marketplace_shop_id || "";
+      const internalShopId = tokenWithShop?.shop_id || "";
+
       res.redirect(
-        `${config.server.clientUrl}/success?platform=tiktok&shopId=${responseData.shop_id || ''}&openId=${responseData.open_id}&seller=${encodeURIComponent(responseData.seller_name)}`
+        `${config.server.clientUrl}/success?platform=tiktok&shopId=${encodeURIComponent(marketplaceShopId)}&internalShopId=${encodeURIComponent(internalShopId)}&openId=${encodeURIComponent(responseData.open_id)}&seller=${encodeURIComponent(responseData.seller_name || "")}`,
       );
     } else {
       throw new Error(`TikTok API Error: ${data.message || "Unknown error"}`);
@@ -320,7 +343,8 @@ exports.getAvailableShops = async (req, res) => {
     );
 
     const shopList = unclaimedByUser.map((shop) => ({
-      id: shop.shop_id,
+      id: getPublicShopId(shop),
+      internal_id: shop.shop_id,
       name: shop.shop_name || "Unknown Shop",
       platform: "TikTok Shop",
       seller_name: shop.seller_name || "",
@@ -380,19 +404,21 @@ exports.claimShop = async (req, res) => {
     }
 
     // Check if shop exists in tokens
-    const shop = await Token.findByShopId(shopId);
+    const shop = await Token.findByShopId(shopId, null, "tiktok");
     if (!shop) {
       return res.status(404).json({
         success: false,
         message: "Shop not found",
       });
     }
+    const resolvedShopId = shop.shop_id;
+    const publicShopId = getPublicShopId(shop);
 
     // Check if user already has access to this shop
     const existingRelation = await UserShop.findOne({
       where: {
         user_id: user.id,
-        shop_id: shopId,
+        shop_id: resolvedShopId,
       },
     });
 
@@ -416,7 +442,8 @@ exports.claimShop = async (req, res) => {
           success: true,
           message: "Shop access reactivated successfully",
           data: {
-            shop_id: shopId,
+            shop_id: publicShopId,
+            internal_shop_id: resolvedShopId,
             shop_name: shop.shop_name,
             role: existingRelation.role,
           },
@@ -425,7 +452,11 @@ exports.claimShop = async (req, res) => {
     }
 
     // Create new relation
-    const newRelation = await UserShop.createRelation(user.id, shopId, "owner");
+    const newRelation = await UserShop.createRelation(
+      user.id,
+      resolvedShopId,
+      "owner",
+    );
 
     console.log(
       ` Shop claimed successfully by user ${user.email}: ${shop.shop_name}`,
@@ -434,7 +465,8 @@ exports.claimShop = async (req, res) => {
       success: true,
       message: "Shop claimed successfully",
       data: {
-        shop_id: shopId,
+        shop_id: publicShopId,
+        internal_shop_id: resolvedShopId,
         shop_name: shop.shop_name,
         role: newRelation.role,
         claimed_at: newRelation.created_at,
@@ -518,7 +550,8 @@ exports.getShops = async (req, res) => {
     console.log(` User has access to ${userTikTokTokens.length} TikTok shops`);
 
     const shopList = userTikTokTokens.map((shop) => ({
-      id: shop.shop_id || "",
+      id: getPublicShopId(shop) || "",
+      internal_id: shop.shop_id,
       name: shop.shop_name || "Unknown Shop",
       platform: "TikTok Shop",
       lastSync: shop.updated_at ? formatDate(shop.updated_at) : "Baru saja",
@@ -576,24 +609,7 @@ exports.getShopInfo = async (req, res) => {
       });
     }
 
-    // Check if user has access to this shop
-    const userShop = await UserShop.findOne({
-      where: {
-        user_id: user.id,
-        shop_id: shopId,
-        status: "active",
-      },
-    });
-
-    if (!userShop) {
-      console.log(` User ${user.email} has no access to shop ${shopId}`);
-      return res.status(403).json({
-        success: false,
-        message: "Access denied to this shop",
-      });
-    }
-
-    const shop = await Token.findByShopId(shopId);
+    const shop = await Token.findByShopId(shopId, null, "tiktok");
 
     if (!shop) {
       return res.status(404).json({
@@ -602,8 +618,29 @@ exports.getShopInfo = async (req, res) => {
       });
     }
 
+    const resolvedShopId = shop.shop_id;
+    const publicShopId = getPublicShopId(shop);
+
+    // Check if user has access to this shop
+    const userShop = await UserShop.findOne({
+      where: {
+        user_id: user.id,
+        shop_id: resolvedShopId,
+        status: "active",
+      },
+    });
+
+    if (!userShop) {
+      console.log(` User ${user.email} has no access to shop ${publicShopId}`);
+      return res.status(403).json({
+        success: false,
+        message: "Access denied to this shop",
+      });
+    }
+
     const shopData = {
-      id: shop.shop_id,
+      id: publicShopId,
+      internal_id: resolvedShopId,
       name: shop.shop_name,
       platform: "TikTok Shop",
       lastSync: shop.updated_at ? formatDate(shop.updated_at) : "Baru saja",
@@ -653,11 +690,14 @@ exports.deleteShop = async (req, res) => {
       });
     }
 
+    const tokenRecord = await Token.findByShopId(shopId, null, "tiktok");
+    const resolvedShopId = tokenRecord?.shop_id || shopId;
+
     // Ensure user owns/has access to the shop
     const relation = await UserShop.findOne({
       where: {
         user_id: user.id,
-        shop_id: shopId,
+        shop_id: resolvedShopId,
         status: "active",
       },
     });
@@ -670,19 +710,22 @@ exports.deleteShop = async (req, res) => {
     }
 
     const deletedRelations = await UserShop.destroy({
-      where: { shop_id: shopId },
+      where: { shop_id: resolvedShopId },
     });
 
     // Hapus token apa pun untuk shop_id ini (fallback tanpa platform filter agar tidak tersisa data)
     const deletedTokens = await Token.destroy({
-      where: { shop_id: shopId },
+      where: { shop_id: resolvedShopId },
     });
+
+    const publicShopId = getPublicShopId(tokenRecord, shopId);
 
     res.json({
       success: true,
       message: "Toko berhasil dihapus dari database",
       data: {
-        shop_id: shopId,
+        shop_id: publicShopId,
+        internal_shop_id: resolvedShopId,
         removed_relations: deletedRelations,
         removed_tokens: deletedTokens,
       },

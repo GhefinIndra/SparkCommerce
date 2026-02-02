@@ -68,8 +68,9 @@ exports.getDashboardStats = async (req, res) => {
     const statsPromises = tokens.map(async (token) => {
       try {
         if (token.platform === "shopee") {
+          const marketplaceShopId = token.marketplace_shop_id || token.shop_id;
           // Fetch Shopee Orders
-          const result = await shopeeOrderService.getOrderList(token.shop_id, {
+          const result = await shopeeOrderService.getOrderList(marketplaceShopId, {
             time_range_field: "create_time",
             time_from: thirtyDaysAgo,
             time_to: now,

@@ -38,6 +38,7 @@ class ShopeeOrderService {
       // Get valid access token
       const tokenRecord = await ShopeeAuthService.getValidToken(shopId);
       const accessToken = tokenRecord.access_token;
+      const marketplaceShopId = tokenRecord.shop?.marketplace_shop_id || shopId;
 
       // API path
       const apiPath = '/api/v2/order/get_order_list';
@@ -48,7 +49,7 @@ class ShopeeOrderService {
         apiPath,
         this.partnerKey,
         accessToken,
-        shopId
+        marketplaceShopId
       );
 
       // Add filter parameters
@@ -127,6 +128,7 @@ class ShopeeOrderService {
       // Get valid access token
       const tokenRecord = await ShopeeAuthService.getValidToken(shopId);
       const accessToken = tokenRecord.access_token;
+      const marketplaceShopId = tokenRecord.shop?.marketplace_shop_id || shopId;
 
       // API path
       const apiPath = '/api/v2/order/get_order_detail';
@@ -137,7 +139,7 @@ class ShopeeOrderService {
         apiPath,
         this.partnerKey,
         accessToken,
-        shopId
+        marketplaceShopId
       );
 
       // Add order_sn_list (comma-separated)
@@ -202,6 +204,7 @@ class ShopeeOrderService {
       // Get valid access token
       const tokenRecord = await ShopeeAuthService.getValidToken(shopId);
       const accessToken = tokenRecord.access_token;
+      const marketplaceShopId = tokenRecord.shop?.marketplace_shop_id || shopId;
 
       // API path
       const apiPath = '/api/v2/logistics/get_shipping_parameter';
@@ -212,7 +215,7 @@ class ShopeeOrderService {
         apiPath,
         this.partnerKey,
         accessToken,
-        shopId
+        marketplaceShopId
       );
 
       params.order_sn = orderSn;
@@ -262,6 +265,7 @@ class ShopeeOrderService {
       // Get valid access token
       const tokenRecord = await ShopeeAuthService.getValidToken(shopId);
       const accessToken = tokenRecord.access_token;
+      const marketplaceShopId = tokenRecord.shop?.marketplace_shop_id || shopId;
 
       // API path
       const apiPath = '/api/v2/logistics/ship_order';
@@ -272,7 +276,7 @@ class ShopeeOrderService {
         apiPath,
         this.partnerKey,
         accessToken,
-        shopId
+        marketplaceShopId
       );
 
       // Build complete URL
@@ -326,6 +330,7 @@ class ShopeeOrderService {
       // Get valid access token
       const tokenRecord = await ShopeeAuthService.getValidToken(shopId);
       const accessToken = tokenRecord.access_token;
+      const marketplaceShopId = tokenRecord.shop?.marketplace_shop_id || shopId;
 
       // API path
       const apiPath = '/api/v2/logistics/get_tracking_number';
@@ -336,7 +341,7 @@ class ShopeeOrderService {
         apiPath,
         this.partnerKey,
         accessToken,
-        shopId
+        marketplaceShopId
       );
 
       params.order_sn = orderSn;

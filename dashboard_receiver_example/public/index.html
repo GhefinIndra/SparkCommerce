@@ -5,58 +5,87 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SparkCommerce Dashboard</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-    <!-- Header -->
-    <header class="header">
-        <div class="container">
-            <h1> SparkCommerce Dashboard</h1>
-            <p class="subtitle">Transaction Monitoring System</p>
+    <header class="hero">
+        <div class="hero-inner container">
+            <div class="hero-copy">
+                <span class="eyebrow">SparkCommerce / Transaction Console</span>
+                <h1>Dashboard Transaksi</h1>
+                <p class="subtitle">
+                    Monitoring order, revenue, dan performa marketplace untuk
+                    <span id="groupName">Group</span>.
+                </p>
+                <div class="hero-actions">
+                    <button class="btn-primary" onclick="loadData()">
+                        <span id="refreshIcon"></span>
+                        Refresh
+                    </button>
+                    <button class="btn-ghost" id="logoutButton">Logout</button>
+                </div>
+            </div>
+            <div class="hero-panel">
+                <div class="panel-block">
+                    <div class="panel-label">Group</div>
+                    <div class="panel-value" id="groupNameBadge">-</div>
+                    <div class="panel-sub" id="groupIdBadge">-</div>
+                </div>
+                <div class="panel-block">
+                    <div class="panel-label">Status</div>
+                    <div id="connectionStatus" class="status-pill status-connected">Connected</div>
+                    <div class="panel-sub">
+                        Last update <span id="lastUpdate">-</span>
+                    </div>
+                </div>
+            </div>
         </div>
     </header>
 
-    <!-- Main Container -->
-    <div class="container">
-
-        <!-- Stats Cards -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-icon"></div>
-                <div class="stat-content">
-                    <h3 id="totalTransactions">0</h3>
-                    <p>Total Transaksi</p>
+    <main class="container">
+        <section class="stats-grid">
+            <article class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-label">Total Transaksi</span>
+                    <span class="stat-tag">All</span>
                 </div>
-            </div>
+                <div class="stat-value" id="totalTransactions">0</div>
+                <p class="stat-note">Semua transaksi yang tercatat di dashboard.</p>
+            </article>
 
-            <div class="stat-card">
-                <div class="stat-icon"></div>
-                <div class="stat-content">
-                    <h3 id="totalRevenue">Rp 0</h3>
-                    <p>Total Revenue</p>
+            <article class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-label">Total Revenue</span>
+                    <span class="stat-tag">IDR</span>
                 </div>
-            </div>
+                <div class="stat-value" id="totalRevenue">Rp 0</div>
+                <p class="stat-note">Akumulasi nilai order yang masuk.</p>
+            </article>
 
-            <div class="stat-card">
-                <div class="stat-icon"></div>
-                <div class="stat-content">
-                    <h3 id="tiktokCount">0</h3>
-                    <p>TikTok Orders</p>
+            <article class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-label">TikTok Orders</span>
+                    <span class="stat-tag">TikTok</span>
                 </div>
-            </div>
+                <div class="stat-value" id="tiktokCount">0</div>
+                <p class="stat-note">Total order dari TikTok Shop.</p>
+            </article>
 
-            <div class="stat-card">
-                <div class="stat-icon"></div>
-                <div class="stat-content">
-                    <h3 id="shopeeCount">0</h3>
-                    <p>Shopee Orders</p>
+            <article class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-label">Shopee Orders</span>
+                    <span class="stat-tag">Shopee</span>
                 </div>
-            </div>
-        </div>
+                <div class="stat-value" id="shopeeCount">0</div>
+                <p class="stat-note">Total order dari Shopee.</p>
+            </article>
+        </section>
 
-        <!-- Filters -->
-        <div class="filters-container">
+        <section class="filters-container">
             <div class="filter-group">
-                <label for="filterPlatform">Platform:</label>
+                <label for="filterPlatform">Platform</label>
                 <select id="filterPlatform" onchange="filterTransactions()">
                     <option value="">Semua Platform</option>
                     <option value="TIKTOK">TikTok</option>
@@ -65,31 +94,32 @@
             </div>
 
             <div class="filter-group">
-                <label for="filterShop">Toko:</label>
+                <label for="filterShop">Toko</label>
                 <select id="filterShop" onchange="filterTransactions()">
                     <option value="">Semua Toko</option>
                 </select>
             </div>
 
             <div class="filter-group">
-                <label for="searchOrder">Cari Order ID:</label>
+                <label for="searchOrder">Cari Order ID</label>
                 <input type="text" id="searchOrder" placeholder="Ketik order ID..." onkeyup="filterTransactions()">
             </div>
 
             <div class="filter-actions">
-                <button class="btn-refresh" onclick="loadData()">
-                    <span id="refreshIcon"></span> Refresh
-                </button>
                 <label class="auto-refresh-toggle">
                     <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()" checked>
-                    Auto Refresh (10s)
+                    Auto refresh setiap 10 detik
                 </label>
             </div>
-        </div>
+        </section>
 
-        <!-- Transactions Table -->
-        <div class="table-container">
-            <h2> Daftar Transaksi</h2>
+        <section class="table-container">
+            <div class="table-header">
+                <div>
+                    <h2>Daftar Transaksi</h2>
+                    <p class="table-subtitle">Ringkasan order terbaru dari marketplace.</p>
+                </div>
+            </div>
 
             <div class="table-wrapper">
                 <table class="transactions-table">
@@ -118,37 +148,26 @@
             </div>
 
             <div id="noData" class="no-data" style="display: none;">
-                <div class="no-data-icon"></div>
                 <p>Belum ada transaksi</p>
-                <small>Transaksi akan muncul ketika ada order baru dari aplikasi</small>
+                <small>Transaksi akan muncul ketika ada order baru dari aplikasi.</small>
             </div>
-        </div>
+        </section>
+    </main>
 
-    </div>
-
-    <!-- Transaction Detail Modal -->
     <div id="detailModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2> Detail Transaksi</h2>
+                <h2>Detail Transaksi</h2>
                 <button class="modal-close" onclick="closeModal()">&times;</button>
             </div>
-            <div class="modal-body" id="modalBody">
-                <!-- Detail will be inserted here -->
-            </div>
+            <div class="modal-body" id="modalBody"></div>
         </div>
     </div>
 
-    <!-- Toast Notification -->
     <div id="toast" class="toast"></div>
 
-    <!-- Footer -->
     <footer class="footer">
-        <p>
-            SparkCommerce Dashboard v1.0.0 |
-            Last Update: <span id="lastUpdate">-</span> |
-            <span id="connectionStatus" class="status-connected"> Connected</span>
-        </p>
+        <p>SparkCommerce Dashboard v1.2.0</p>
     </footer>
 
     <script src="script.js"></script>

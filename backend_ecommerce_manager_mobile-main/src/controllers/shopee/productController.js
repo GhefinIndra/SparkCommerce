@@ -62,6 +62,8 @@ class ShopeeProductController {
         is_expired: new Date() > new Date(token.expire_at),
       });
 
+      const marketplaceShopId = token.marketplace_shop_id || shopId;
+
       // Parse item_status (support comma-separated values)
       const statusArray = item_status.split(',').map(s => s.trim().toUpperCase());
 
@@ -71,7 +73,7 @@ class ShopeeProductController {
       // Call Shopee API (combined: get_item_list + get_item_base_info)
       const productsResponse = await productApi.getProducts(
         token.access_token,
-        shopId,
+        marketplaceShopId,
         parseInt(offset),
         validPageSize,
         statusArray
@@ -139,7 +141,8 @@ class ShopeeProductController {
           hasNextPage: productsResponse.response?.has_next_page || false,
           nextOffset: productsResponse.response?.next_offset || parseInt(offset) + validPageSize,
           shop: {
-            id: shopId,
+            id: marketplaceShopId,
+            internal_id: token.shop_id,
             name: token.shop_name || `Shop ${shopId}`,
             platform: "Shopee",
           },
@@ -168,8 +171,9 @@ class ShopeeProductController {
             hasNextPage: false,
             nextOffset: 0,
             shop: {
-              id: shopId,
-              name: token.shop_name || `Shop ${shopId}`,
+              id: token?.marketplace_shop_id || shopId,
+              internal_id: token?.shop_id || null,
+              name: token?.shop_name || `Shop ${shopId}`,
               platform: "Shopee",
             },
           },
@@ -225,11 +229,12 @@ class ShopeeProductController {
       }
 
       console.log(" Using Shopee access token for product detail");
+      const marketplaceShopId = token.marketplace_shop_id || shopId;
 
       // Call Shopee API (get_item_base_info + get_model_list if needed)
       const productResponse = await productApi.getProductDetail(
         token.access_token,
-        shopId,
+        marketplaceShopId,
         parseInt(productId)
       );
 
@@ -441,6 +446,8 @@ class ShopeeProductController {
         });
       }
 
+      const marketplaceShopId = token.marketplace_shop_id || shopId;
+
       // Transform frontend SKU format to Shopee API format
       const priceList = skus.map(sku => {
         // For products without variants, sku.id equals productId, so model_id should be 0
@@ -458,7 +465,7 @@ class ShopeeProductController {
       // Call Shopee API
       const updateResponse = await productApi.updatePrice(
         token.access_token,
-        shopId,
+        marketplaceShopId,
         parseInt(productId),
         priceList
       );
@@ -547,6 +554,8 @@ class ShopeeProductController {
         });
       }
 
+      const marketplaceShopId = token.marketplace_shop_id || shopId;
+
       // Transform frontend SKU format to Shopee API format
       const stockList = skus.map(sku => {
         const stock = sku.available_stock || sku.quantity || sku.stock || 0;
@@ -570,7 +579,7 @@ class ShopeeProductController {
       // Call Shopee API
       const updateResponse = await productApi.updateStock(
         token.access_token,
-        shopId,
+        marketplaceShopId,
         parseInt(productId),
         stockList
       );
@@ -659,6 +668,8 @@ class ShopeeProductController {
         });
       }
 
+      const marketplaceShopId = token.marketplace_shop_id || shopId;
+
       // Build update data
       const updateData = {};
       if (title) updateData.item_name = title;
@@ -674,7 +685,7 @@ class ShopeeProductController {
       // Call Shopee API
       const updateResponse = await productApi.updateItem(
         token.access_token,
-        shopId,
+        marketplaceShopId,
         parseInt(productId),
         updateData
       );
@@ -741,6 +752,8 @@ class ShopeeProductController {
         });
       }
 
+      const marketplaceShopId = token.marketplace_shop_id || shopId;
+
       // Build update data for images
       const updateData = {
         image: {
@@ -753,7 +766,7 @@ class ShopeeProductController {
       // Call Shopee API
       const updateResponse = await productApi.updateItem(
         token.access_token,
-        shopId,
+        marketplaceShopId,
         parseInt(productId),
         updateData
       );
@@ -810,11 +823,12 @@ class ShopeeProductController {
       }
 
       console.log(" Using Shopee access token for product deletion");
+      const marketplaceShopId = token.marketplace_shop_id || shopId;
 
       // Call Shopee API to delete item
       const deleteResponse = await productApi.deleteItem(
         token.access_token,
-        shopId,
+        marketplaceShopId,
         parseInt(productId)
       );
 
@@ -888,11 +902,12 @@ class ShopeeProductController {
       }
 
       console.log(` Using Shopee access token for product ${unlist ? 'unlist' : 'list'}`);
+      const marketplaceShopId = token.marketplace_shop_id || shopId;
 
       // Call Shopee API to unlist/list item
       const unlistResponse = await productApi.unlistItem(
         token.access_token,
-        shopId,
+        marketplaceShopId,
         parseInt(productId),
         unlist
       );

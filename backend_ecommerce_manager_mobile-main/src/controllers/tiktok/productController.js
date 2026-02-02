@@ -4,6 +4,9 @@ const UserShop = require("../../models/UserShop");
 const productApi = require("../../services/tiktok/productAPI");
 const { Op } = require("sequelize");
 
+const getPublicShopId = (token, fallback = null) =>
+  token?.marketplace_shop_id || token?.shop_id || fallback;
+
 class ProductController {
   // Get all shops untuk mobile dashboard
   async getShops(req, res) {
@@ -56,7 +59,8 @@ class ProductController {
           console.log(` Processing shop: ${shopId}`);
 
           shops.push({
-            id: shopId,
+            id: getPublicShopId(token, shopId),
+            internal_id: shopId,
             name: token.shop_name || `Toko ${shopId}`,
             sellerName: token.seller_name || "Unknown Seller",
             platform: "TikTok Shop",
@@ -94,7 +98,7 @@ class ProductController {
 
       console.log(` Getting products for shop: ${shopId}`);
 
-      const token = await Token.findByShopId(shopId);
+      const token = await Token.findByShopId(shopId, null, "tiktok");
 
       if (!token) {
         return res.status(404).json({
@@ -150,7 +154,8 @@ class ProductController {
           totalCount: productsResponse.data?.total_count || 0,
           hasNextPage: !!productsResponse.data?.next_page_token,
           shop: {
-            id: shopId,
+            id: getPublicShopId(token, shopId),
+            internal_id: token.shop_id,
             name: token.shop_name || `Toko ${shopId}`,
           },
         },
@@ -173,7 +178,7 @@ class ProductController {
     try {
       const { shopId, productId } = req.params;
 
-      const token = await Token.findByShopId(shopId);
+      const token = await Token.findByShopId(shopId, null, "tiktok");
 
       if (!token) {
         return res.status(404).json({
@@ -321,7 +326,7 @@ class ProductController {
         });
       }
 
-      const token = await Token.findByShopId(shopId);
+      const token = await Token.findByShopId(shopId, null, "tiktok");
 
       if (!token) {
         return res.status(404).json({
@@ -375,7 +380,7 @@ class ProductController {
         });
       }
 
-      const token = await Token.findByShopId(shopId);
+      const token = await Token.findByShopId(shopId, null, "tiktok");
 
       if (!token) {
         return res.status(404).json({
@@ -425,7 +430,7 @@ class ProductController {
         });
       }
 
-      const token = await Token.findByShopId(shopId);
+      const token = await Token.findByShopId(shopId, null, "tiktok");
 
       if (!token) {
         return res.status(404).json({
@@ -472,7 +477,7 @@ class ProductController {
 
       console.log("️ Delete product request:", { shopId, productId });
 
-      const token = await Token.findByShopId(shopId);
+      const token = await Token.findByShopId(shopId, null, "tiktok");
 
       if (!token) {
         return res.status(404).json({
@@ -540,7 +545,7 @@ class ProductController {
         });
       }
 
-      const token = await Token.findByShopId(shopId);
+      const token = await Token.findByShopId(shopId, null, "tiktok");
 
       if (!token) {
         return res.status(404).json({
@@ -618,7 +623,7 @@ class ProductController {
         }
       }
 
-      const token = await Token.findByShopId(shopId);
+      const token = await Token.findByShopId(shopId, null, "tiktok");
 
       if (!token) {
         return res.status(404).json({
@@ -667,7 +672,7 @@ class ProductController {
       const { shopId, productId } = req.params;
 
       console.log(" Activate product request:", { shopId, productId });
-      const token = await Token.findByShopId(shopId);
+      const token = await Token.findByShopId(shopId, null, "tiktok");
 
       if (!token) {
         return res.status(404).json({
@@ -720,7 +725,7 @@ class ProductController {
       const { shopId, productId } = req.params;
 
       console.log(" Deactivate product request:", { shopId, productId });
-      const token = await Token.findByShopId(shopId);
+      const token = await Token.findByShopId(shopId, null, "tiktok");
 
       if (!token) {
         return res.status(404).json({
@@ -773,7 +778,7 @@ class ProductController {
       const { shopId, productId } = req.params;
 
       console.log(" Recover product request:", { shopId, productId });
-      const token = await Token.findByShopId(shopId);
+      const token = await Token.findByShopId(shopId, null, "tiktok");
 
       if (!token) {
         return res.status(404).json({
@@ -849,7 +854,7 @@ class ProductController {
       }
 
       // Get token
-      const token = await Token.findByShopId(shopId);
+      const token = await Token.findByShopId(shopId, null, "tiktok");
 
       if (!token) {
         return res.status(404).json({
@@ -930,7 +935,7 @@ class ProductController {
       }
 
       // Get token
-      const token = await Token.findByShopId(shopId);
+      const token = await Token.findByShopId(shopId, null, "tiktok");
 
       if (!token) {
         return res.status(404).json({

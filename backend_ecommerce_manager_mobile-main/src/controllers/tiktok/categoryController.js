@@ -14,7 +14,7 @@ const categoryController = {
       const { parent_id, keyword, include_prohibited_categories } = req.query;
 
       // Get shop token data
-      const tokenData = await Token.findByShopId(shop_id);
+      const tokenData = await Token.findByShopId(shop_id, null, "tiktok");
       if (!tokenData) {
         return res.status(404).json({
           success: false,
@@ -90,7 +90,7 @@ const categoryController = {
       const { shop_id, category_id } = req.params;
 
       // Get shop token data
-      const tokenData = await Token.findByShopId(shop_id);
+      const tokenData = await Token.findByShopId(shop_id, null, "tiktok");
       if (!tokenData) {
         return res.status(404).json({
           success: false,
@@ -176,7 +176,7 @@ const categoryController = {
       const { shop_id, category_id } = req.params;
 
       // Get shop token data
-      const tokenData = await Token.findByShopId(shop_id);
+      const tokenData = await Token.findByShopId(shop_id, null, "tiktok");
       if (!tokenData) {
         return res.status(404).json({
           success: false,
@@ -272,7 +272,7 @@ const categoryController = {
       const { shop_id, category_id } = req.params;
 
       // Get shop token data
-      const tokenData = await Token.findByShopId(shop_id);
+      const tokenData = await Token.findByShopId(shop_id, null, "tiktok");
       if (!tokenData) {
         return res.status(404).json({
           success: false,
@@ -358,7 +358,7 @@ const categoryController = {
       const { keyword, limit } = req.query;
 
       // Get shop token data
-      const tokenData = await Token.findByShopId(shop_id);
+      const tokenData = await Token.findByShopId(shop_id, null, "tiktok");
       if (!tokenData) {
         return res.status(404).json({
           success: false,
@@ -422,7 +422,7 @@ const categoryController = {
       const { shop_id, category_id } = req.params;
 
       // Get shop token data
-      const tokenData = await Token.findByShopId(shop_id);
+      const tokenData = await Token.findByShopId(shop_id, null, "tiktok");
       if (!tokenData) {
         return res.status(404).json({
           success: false,

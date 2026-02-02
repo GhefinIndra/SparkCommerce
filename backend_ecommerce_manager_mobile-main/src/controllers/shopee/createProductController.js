@@ -5,6 +5,9 @@ const categoryAPI = require('../../services/shopee/categoryAPI');
 const logisticsAPI = require('../../services/shopee/logisticsAPI');
 const productAPI = require('../../services/shopee/productAPI');
 
+const resolveMarketplaceShopId = (token, shopId) =>
+  token?.marketplace_shop_id || shopId;
+
 const createProductController = {
   /**
    * Get categories
@@ -44,10 +47,12 @@ const createProductController = {
         });
       }
 
+      const marketplaceShopId = resolveMarketplaceShopId(token, shop_id);
+
       // Get categories from Shopee API with Indonesian language
       const categoriesResponse = await categoryAPI.getCategories(
         token.access_token,
-        shop_id,
+        marketplaceShopId,
         language
       );
 
@@ -186,7 +191,7 @@ const createProductController = {
       // Use Indonesian language ('id') for Indonesia region
       const attributesResponse = await categoryAPI.getCategoryAttributes(
         token.access_token,
-        shop_id,
+        marketplaceShopId,
         [categoryIdInt], // Array of category IDs
         'id' // Indonesian language
       );
@@ -309,10 +314,12 @@ const createProductController = {
         });
       }
 
+      const marketplaceShopId = resolveMarketplaceShopId(token, shop_id);
+
       // Get logistics channels
       const channelsResponse = await logisticsAPI.getChannelList(
         token.access_token,
-        shop_id
+        marketplaceShopId
       );
 
       const allChannels = channelsResponse.response?.logistics_channel_list || [];
@@ -320,7 +327,7 @@ const createProductController = {
       // Get enabled channels only
       const enabledChannels = await logisticsAPI.getEnabledChannels(
         token.access_token,
-        shop_id
+        marketplaceShopId
       );
 
       console.log(' Logistics channels retrieved successfully:', {
@@ -437,7 +444,7 @@ const createProductController = {
 
         const enabledChannels = await logisticsAPI.getEnabledChannels(
           token.access_token,
-          shopId
+          marketplaceShopId
         );
 
         if (enabledChannels.length === 0) {
@@ -475,7 +482,7 @@ const createProductController = {
       console.log(' Calling Shopee add_item API...');
       const result = await productAPI.createItem(
         token.access_token,
-        shopId,
+        marketplaceShopId,
         productData
       );
 
@@ -581,7 +588,7 @@ const createProductController = {
       // Get brand list from Shopee API
       const brandListResponse = await categoryAPI.getBrandList(
         token.access_token,
-        shop_id,
+        marketplaceShopId,
         categoryIdInt,
         parseInt(offset),
         parseInt(page_size),
@@ -701,7 +708,7 @@ const createProductController = {
       // Register brand via Shopee API
       const result = await categoryAPI.registerBrand(
         token.access_token,
-        shop_id,
+        marketplaceShopId,
         brandPayload
       );
 
@@ -782,7 +789,7 @@ const createProductController = {
       // Get item limits from Shopee API
       const limitsResponse = await categoryAPI.getItemLimit(
         token.access_token,
-        shop_id,
+        marketplaceShopId,
         categoryIdInt
       );
 

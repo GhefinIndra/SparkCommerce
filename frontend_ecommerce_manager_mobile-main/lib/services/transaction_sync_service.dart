@@ -6,6 +6,7 @@ import '../models/order.dart';
 import 'database_service.dart';
 import 'auth_service.dart';
 import '../utils/app_config.dart';
+import 'encryption_service.dart';
 
 /// Service untuk sync transaksi ke dashboard eksternal
 /// Hanya dipanggil dari ViewOrdersScreen (bukan dari Home/Shop screen)
@@ -115,10 +116,10 @@ class TransactionSyncService {
       print(' Sending ${newOrders.length} orders to backend proxy...');
       final response = await http.post(
         Uri.parse('$baseUrl/groups/sync-transactions'),
-        headers: {
+        headers: EncryptionService.withEncryptionHeader({
           'Content-Type': 'application/json',
           'auth_token': authToken ?? '',
-        },
+        }),
         body: json.encode(payload),
       ).timeout(const Duration(seconds: 15));
 
@@ -171,14 +172,14 @@ class TransactionSyncService {
 
       final response = await http.get(
         Uri.parse('$baseUrl/user/profile'),
-        headers: {
+        headers: EncryptionService.withEncryptionHeader({
           'Content-Type': 'application/json',
           'auth_token': token,
-        },
+        }),
       ).timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
+        final data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true && data['data'] != null) {
           return data['data'] as Map<String, dynamic>;
         }
@@ -212,17 +213,17 @@ class TransactionSyncService {
 
       final response = await http.get(
         Uri.parse(url),
-        headers: {
+        headers: EncryptionService.withEncryptionHeader({
           'Content-Type': 'application/json',
           'auth_token': token,
-        },
+        }),
       ).timeout(const Duration(seconds: 5));
 
       print(' Response status: ${response.statusCode}');
       print(' Response body: ${response.body}');
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
+        final data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true && data['data'] != null) {
           print(' Group info received successfully');
           return data['data'] as Map<String, dynamic>;
@@ -245,3 +246,4 @@ class TransactionSyncService {
     return await _db.getTransactionSyncLog(shopId, platform);
   }
 }
+

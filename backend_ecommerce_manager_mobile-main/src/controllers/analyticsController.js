@@ -53,13 +53,11 @@ exports.getSalesSummary = async (req, res) => {
     // Get shops based on filter
     let shopsToQuery = [];
     if (shopId) {
-      const tokenDoc = await Token.findOne({
-        where: {
-          shop_id: shopId,
-          status: 'active',
-          ...(platform !== 'all' ? { platform } : {}),
-        },
-      });
+      const tokenDoc = await Token.findByShopId(
+        shopId,
+        null,
+        platform !== 'all' ? platform : null
+      );
       if (!tokenDoc) {
         return res.status(404).json({
           success: false,
@@ -98,7 +96,14 @@ exports.getSalesSummary = async (req, res) => {
     // Get orders from all shops
     for (const shop of shopsToQuery) {
       try {
-        const orders = await getOrdersInPeriod(shop.shop_id, shop.access_token, currentStart, currentEnd, shop.platform || 'tiktok');
+        const shopIdentifier = getPlatformShopIdentifier(shop);
+        const orders = await getOrdersInPeriod(
+          shopIdentifier,
+          shop.access_token,
+          currentStart,
+          currentEnd,
+          shop.platform || 'tiktok'
+        );
         allOrders.push(...orders);
       } catch (error) {
         console.error(`Error fetching orders for shop ${shop.shop_id}:`, error.message);
@@ -126,8 +131,9 @@ exports.getSalesSummary = async (req, res) => {
       let previousOrders = [];
       for (const shop of shopsToQuery) {
         try {
+          const shopIdentifier = getPlatformShopIdentifier(shop);
           const orders = await getOrdersInPeriod(
-            shop.shop_id,
+            shopIdentifier,
             shop.access_token,
             previousStart,
             previousEnd,
@@ -193,7 +199,7 @@ exports.getRevenueTrend = async (req, res) => {
 
     let tokens = [];
     if (shopId) {
-      const tokenDoc = await Token.findOne({ where: { shop_id: shopId, status: 'active' } });
+      const tokenDoc = await Token.findByShopId(shopId);
       if (!tokenDoc) {
         return res.status(404).json({
           success: false,
@@ -216,8 +222,9 @@ exports.getRevenueTrend = async (req, res) => {
 
     let orders = [];
     for (const tokenDoc of tokens) {
+      const shopIdentifier = getPlatformShopIdentifier(tokenDoc);
       const shopOrders = await getOrdersInPeriod(
-        tokenDoc.shop_id,
+        shopIdentifier,
         tokenDoc.access_token,
         start,
         end,
@@ -290,7 +297,7 @@ exports.getOrderStatusBreakdown = async (req, res) => {
 
     let tokens = [];
     if (shopId) {
-      const tokenDoc = await Token.findOne({ where: { shop_id: shopId, status: 'active' } });
+      const tokenDoc = await Token.findByShopId(shopId);
       if (!tokenDoc) {
         return res.status(404).json({
           success: false,
@@ -313,8 +320,9 @@ exports.getOrderStatusBreakdown = async (req, res) => {
 
     let orders = [];
     for (const tokenDoc of tokens) {
+      const shopIdentifier = getPlatformShopIdentifier(tokenDoc);
       const shopOrders = await getOrdersInPeriod(
-        tokenDoc.shop_id,
+        shopIdentifier,
         tokenDoc.access_token,
         start,
         end,
@@ -383,7 +391,7 @@ exports.getTopProducts = async (req, res) => {
 
     let tokens = [];
     if (shopId) {
-      const tokenDoc = await Token.findOne({ where: { shop_id: shopId, status: 'active' } });
+      const tokenDoc = await Token.findByShopId(shopId);
       if (!tokenDoc) {
         return res.status(404).json({
           success: false,
@@ -406,8 +414,9 @@ exports.getTopProducts = async (req, res) => {
 
     let orders = [];
     for (const tokenDoc of tokens) {
+      const shopIdentifier = getPlatformShopIdentifier(tokenDoc);
       const shopOrders = await getOrdersInPeriod(
-        tokenDoc.shop_id,
+        shopIdentifier,
         tokenDoc.access_token,
         start,
         end,
@@ -595,7 +604,14 @@ exports.getShopComparison = async (req, res) => {
     const shopMetrics = await Promise.all(
       tokens.map(async (tokenDoc) => {
         try {
-          const orders = await getOrdersInPeriod(tokenDoc.shop_id, tokenDoc.access_token, start, end);
+          const shopIdentifier = getPlatformShopIdentifier(tokenDoc);
+          const orders = await getOrdersInPeriod(
+            shopIdentifier,
+            tokenDoc.access_token,
+            start,
+            end,
+            tokenDoc.platform || "tiktok",
+          );
 
           const revenue = orders.reduce((sum, order) => {
             return sum + parseFloat(order.payment?.total_amount || 0);
@@ -606,7 +622,10 @@ exports.getShopComparison = async (req, res) => {
 
           return {
             shopId: tokenDoc.shop_id,
-            shopName: tokenDoc.shop_name || tokenDoc.shop_id,
+            shopName:
+              tokenDoc.shop_name ||
+              tokenDoc.marketplace_shop_id ||
+              tokenDoc.shop_id,
             platform: tokenDoc.platform || 'tiktok',
             revenue: parseFloat(revenue.toFixed(2)),
             orderCount,
@@ -616,7 +635,10 @@ exports.getShopComparison = async (req, res) => {
           console.error(`Error getting metrics for shop ${tokenDoc.shop_id}:`, error.message);
           return {
             shopId: tokenDoc.shop_id,
-            shopName: tokenDoc.shop_name || tokenDoc.shop_id,
+            shopName:
+              tokenDoc.shop_name ||
+              tokenDoc.marketplace_shop_id ||
+              tokenDoc.shop_id,
             platform: tokenDoc.platform || 'tiktok',
             revenue: 0,
             orderCount: 0,
@@ -653,6 +675,14 @@ exports.getShopComparison = async (req, res) => {
 // ============================================
 // HELPER FUNCTIONS
 // ============================================
+
+function getPlatformShopIdentifier(tokenDoc) {
+  if (!tokenDoc) return null;
+  if (tokenDoc.platform === 'tiktok') {
+    return tokenDoc.shop_cipher || tokenDoc.marketplace_shop_id;
+  }
+  return tokenDoc.marketplace_shop_id || tokenDoc.shop_id;
+}
 
 /**
  * Get orders within a date period - Multi-platform support

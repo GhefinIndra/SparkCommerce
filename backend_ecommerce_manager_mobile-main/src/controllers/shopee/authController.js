@@ -2,10 +2,15 @@
 const Token = require("../../models/Token");
 const User = require("../../models/User");
 const UserShop = require("../../models/UserShop");
+const Shop = require("../../models/Shop");
 const { buildShopeeParams, buildShopeeUrl } = require("../../utils/shopeeSignature");
 const config = require("../../config/env");
 const { Op } = require("sequelize");
 const ShopService = require("../../services/shopee/ShopService");
+
+function getPublicShopId(token) {
+  return token?.marketplace_shop_id || token?.shop_id || null;
+}
 
 // Helper function untuk format date
 function formatDate(date) {
@@ -148,15 +153,22 @@ exports.callback = async (req, res) => {
     console.log("Fetching shop information from Shopee...");
     const shopInfo = await ShopService.getShopInfo(shop_id, data.access_token);
 
-    // Save token to database with shop info
+    const shopRecord = await Shop.findOrCreateByMarketplace("shopee", shop_id.toString(), {
+      marketplace_platform: "shopee",
+      marketplace_shop_id: shop_id.toString(),
+      shop_name: shopInfo.shop_name,
+      shop_region: shopInfo.region,
+      region: shopInfo.region,
+      seller_name: shopInfo.shop_name,
+    });
+
+    // Save token to database
     const tokenData = {
       platform: "shopee",
       open_id: `shopee_${shop_id}`,
       access_token: data.access_token,
       refresh_token: data.refresh_token,
-      shop_id: shop_id.toString(),
-      shop_name: shopInfo.shop_name,
-      shop_region: shopInfo.region,
+      shop_id: shopRecord.id,
       status: "active",
       expire_at: new Date(Date.now() + data.expire_in * 1000),
       user_id: null,
@@ -181,7 +193,7 @@ exports.callback = async (req, res) => {
           const existingRelation = await UserShop.findOne({
             where: {
               user_id: user.id,
-              shop_id: shop_id.toString(),
+              shop_id: shopRecord.id,
             },
           });
 
@@ -193,7 +205,7 @@ exports.callback = async (req, res) => {
             });
           } else {
             console.log("Creating new user-shop relation...");
-            await UserShop.createRelation(user.id, shop_id.toString(), "owner");
+            await UserShop.createRelation(user.id, shopRecord.id, "owner");
           }
 
           console.log("Shopee shop connected to user:", user.email);
@@ -208,7 +220,7 @@ exports.callback = async (req, res) => {
     }
 
     res.redirect(
-      `${config.server.clientUrl}/success?platform=shopee&shopId=${shop_id}`
+      `${config.server.clientUrl}/success?platform=shopee&shopId=${encodeURIComponent(shop_id)}&internalShopId=${encodeURIComponent(shopRecord.id)}`
     );
   } catch (error) {
     console.error("Shopee OAuth Callback Error:", error.message);
@@ -288,7 +300,8 @@ exports.getShops = async (req, res) => {
     console.log(`User has access to ${userShopeeTokens.length} Shopee shops`);
 
     const shopList = userShopeeTokens.map((shop) => ({
-      id: shop.shop_id || "",
+      id: getPublicShopId(shop) || "",
+      internal_id: shop.shop_id,
       name: shop.shop_name || "Unknown Shopee Shop",
       platform: "Shopee",
       lastSync: shop.updated_at ? formatDate(shop.updated_at) : "Baru saja",
@@ -342,10 +355,13 @@ exports.deleteShop = async (req, res) => {
       });
     }
 
+    const tokenRecord = await Token.findByShopId(shopId, null, "shopee");
+    const resolvedShopId = tokenRecord?.shop_id || shopId;
+
     const relation = await UserShop.findOne({
       where: {
         user_id: user.id,
-        shop_id: shopId,
+        shop_id: resolvedShopId,
         status: "active",
       },
     });
@@ -358,19 +374,22 @@ exports.deleteShop = async (req, res) => {
     }
 
     const deletedRelations = await UserShop.destroy({
-      where: { shop_id: shopId },
+      where: { shop_id: resolvedShopId },
     });
 
     // Hapus token apa pun untuk shop_id ini (fallback tanpa filter platform)
     const deletedTokens = await Token.destroy({
-      where: { shop_id: shopId },
+      where: { shop_id: resolvedShopId },
     });
+
+    const publicShopId = getPublicShopId(tokenRecord, shopId);
 
     res.json({
       success: true,
       message: "Toko Shopee berhasil dihapus dari database",
       data: {
-        shop_id: shopId,
+        shop_id: publicShopId,
+        internal_shop_id: resolvedShopId,
         removed_relations: deletedRelations,
         removed_tokens: deletedTokens,
       },
@@ -415,29 +434,7 @@ exports.getShopInfo = async (req, res) => {
       });
     }
 
-    // Check if user has access to this shop
-    const userShop = await UserShop.findOne({
-      where: {
-        user_id: user.id,
-        shop_id: shopId,
-        status: "active",
-      },
-    });
-
-    if (!userShop) {
-      console.log(`User ${user.email} has no access to Shopee shop ${shopId}`);
-      return res.status(403).json({
-        success: false,
-        message: "Access denied to this shop",
-      });
-    }
-
-    const shop = await Token.findOne({
-      where: {
-        shop_id: shopId,
-        platform: "shopee",
-      },
-    });
+    const shop = await Token.findByShopId(shopId, null, "shopee");
 
     if (!shop) {
       return res.status(404).json({
@@ -446,8 +443,31 @@ exports.getShopInfo = async (req, res) => {
       });
     }
 
+    const resolvedShopId = shop.shop_id;
+    const publicShopId = getPublicShopId(shop);
+
+    // Check if user has access to this shop
+    const userShop = await UserShop.findOne({
+      where: {
+        user_id: user.id,
+        shop_id: resolvedShopId,
+        status: "active",
+      },
+    });
+
+    if (!userShop) {
+      console.log(
+        `User ${user.email} has no access to Shopee shop ${publicShopId}`,
+      );
+      return res.status(403).json({
+        success: false,
+        message: "Access denied to this shop",
+      });
+    }
+
     const shopData = {
-      id: shop.shop_id,
+      id: publicShopId,
+      internal_id: resolvedShopId,
       name: shop.shop_name,
       platform: "Shopee",
       lastSync: shop.updated_at ? formatDate(shop.updated_at) : "Baru saja",
@@ -485,12 +505,7 @@ exports.refreshAccessToken = async (req, res) => {
     console.log(`Refreshing access token for Shopee shop: ${shop_id}`);
 
     // Get current token from database
-    const tokenRecord = await Token.findOne({
-      where: {
-        shop_id: shop_id.toString(),
-        platform: "shopee",
-      },
-    });
+    const tokenRecord = await Token.findByShopId(shop_id, null, "shopee");
 
     if (!tokenRecord || !tokenRecord.refresh_token) {
       return res.status(404).json({
@@ -507,10 +522,12 @@ exports.refreshAccessToken = async (req, res) => {
     const url = buildShopeeUrl(apiUrl, apiPath, params);
 
     // Request body
+    const marketplaceShopId =
+      tokenRecord.shop?.marketplace_shop_id || shop_id;
     const requestBody = {
       refresh_token: tokenRecord.refresh_token,
       partner_id: parseInt(partnerId),
-      shop_id: parseInt(shop_id),
+      shop_id: parseInt(marketplaceShopId),
     };
 
     console.log("Calling Shopee Refresh Token API");

@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'database_service.dart';
 import 'auth_service.dart';
 import '../utils/app_config.dart';
+import 'encryption_service.dart';
 
 class SKUSyncService {
   static final SKUSyncService _instance = SKUSyncService._internal();
@@ -31,10 +32,11 @@ class SKUSyncService {
   // Get auth headers
   Future<Map<String, String>> _getAuthHeaders() async {
     final token = await _getAuthToken();
-    return {
+    final headers = {
       'Content-Type': 'application/json',
       if (token != null && token.isNotEmpty) 'auth_token': token,
     };
+    return EncryptionService.withEncryptionHeader(headers);
   }
 
   // Get selected shop ID
@@ -210,7 +212,7 @@ class SKUSyncService {
       print('   Response Status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true) {
           print('    TikTok sync success');
           return true;
@@ -265,7 +267,7 @@ class SKUSyncService {
       print('   Response Status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] == true) {
           print('    Shopee sync success');
           return true;
@@ -345,7 +347,7 @@ class SKUSyncService {
 
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final data = await EncryptionService.decodeResponse(response.body);
         if (data['success'] && data['data']['skus'] != null) {
           final skus = data['data']['skus'] as List;
           if (skus.isNotEmpty) {
@@ -469,3 +471,4 @@ class SKUSyncService {
     }
   }
 }
+

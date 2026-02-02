@@ -2,6 +2,7 @@
 const jwt = require("jsonwebtoken");
 const Token = require("../models/Token");
 const UserShop = require("../models/UserShop");
+const Shop = require("../models/Shop");
 
 // JWT Secret (add to env later)
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-this";
@@ -87,11 +88,21 @@ const verifyShopAccess = async (req, res, next) => {
     }
 
     // Resolve token record
-    const shop = await Token.findOne({
-      where: shopId
-        ? { shop_id: shopId, status: "active" }
-        : { shop_cipher: shopCipher, status: "active" },
-    });
+    let shop = null;
+    if (shopId) {
+      shop = await Token.findByShopId(shopId);
+    } else if (shopCipher) {
+      const shopRecord = await Shop.findOne({
+        where: { shop_cipher: shopCipher },
+      });
+      if (shopRecord) {
+        shop = await Token.findByShopId(
+          shopRecord.id,
+          null,
+          shopRecord.marketplace_platform,
+        );
+      }
+    }
 
     if (!shop) {
       return res.status(404).json({

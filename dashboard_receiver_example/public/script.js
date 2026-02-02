@@ -1,18 +1,56 @@
 // ===== GLOBAL VARIABLES =====
 let allTransactions = [];
 let autoRefreshInterval = null;
-const API_BASE = window.location.origin;
+const basePath = window.location.pathname.startsWith('/dashboard') ? '/dashboard' : '';
+const API_BASE = `${window.location.origin}${basePath}`;
+
+const groupNameEl = document.getElementById('groupName');
+const groupNameBadge = document.getElementById('groupNameBadge');
+const groupIdBadge = document.getElementById('groupIdBadge');
+const logoutButton = document.getElementById('logoutButton');
 
 // ===== INITIALIZATION =====
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Dashboard loaded');
+    loadGroupInfo();
     loadData();
 
-    // Start auto refresh if checkbox is checked
+    if (logoutButton) {
+        logoutButton.addEventListener('click', async () => {
+            try {
+                await fetch(`${API_BASE}/logout`, { method: 'POST' });
+            } catch (_) {
+                // ignore logout failures
+            }
+            window.location.href = `${basePath}/login`;
+        });
+    }
+
     if (document.getElementById('autoRefresh').checked) {
         startAutoRefresh();
     }
 });
+
+async function loadGroupInfo() {
+    try {
+        const response = await fetch(`${API_BASE}/group-info`);
+        if (response.status === 401) {
+            window.location.href = `${basePath}/login`;
+            return;
+        }
+
+        const data = await response.json();
+        if (data.success && data.data) {
+            const name = data.data.nama_group || 'Group';
+            const gid = data.data.gid || '-';
+            if (groupNameEl) groupNameEl.textContent = name;
+            if (groupNameBadge) groupNameBadge.textContent = name;
+            if (groupIdBadge) groupIdBadge.textContent = gid;
+        }
+    } catch (error) {
+        console.error('Error loading group info:', error);
+    }
+}
 
 // ===== LOAD DATA =====
 async function loadData() {
@@ -21,6 +59,10 @@ async function loadData() {
 
         // Fetch stats
         const statsResponse = await fetch(`${API_BASE}/stats`);
+        if (statsResponse.status === 401) {
+            window.location.href = `${basePath}/login`;
+            return;
+        }
         const statsData = await statsResponse.json();
 
         if (statsData.success) {
@@ -29,6 +71,10 @@ async function loadData() {
 
         // Fetch transactions
         const transactionsResponse = await fetch(`${API_BASE}/transactions`);
+        if (transactionsResponse.status === 401) {
+            window.location.href = `${basePath}/login`;
+            return;
+        }
         const transactionsData = await transactionsResponse.json();
 
         if (transactionsData.success) {
@@ -342,11 +388,11 @@ function updateLastUpdate() {
 function setConnectionStatus(isConnected) {
     const statusEl = document.getElementById('connectionStatus');
     if (isConnected) {
-        statusEl.innerHTML = ' Connected';
-        statusEl.className = 'status-connected';
+        statusEl.textContent = 'Connected';
+        statusEl.className = 'status-pill status-connected';
     } else {
-        statusEl.innerHTML = ' Disconnected';
-        statusEl.className = 'status-disconnected';
+        statusEl.textContent = 'Disconnected';
+        statusEl.className = 'status-pill status-disconnected';
     }
 }
 

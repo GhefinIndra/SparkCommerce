@@ -2,6 +2,7 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/sequelize");
 const { encrypt, decrypt } = require("../utils/encryption");
+const Shop = require("./Shop");
 
 const Token = sequelize.define(
   "Token",
@@ -28,7 +29,6 @@ const Token = sequelize.define(
       type: DataTypes.ENUM('tiktok', 'shopee', 'tokopedia', 'lazada', 'bukalapak'),
       allowNull: false,
       defaultValue: 'tiktok',
-      comment: 'E-commerce platform identifier',
     },
 
     // OAuth Fields
@@ -57,54 +57,16 @@ const Token = sequelize.define(
     open_id: {
       type: DataTypes.STRING(255),
       allowNull: false,
-      comment: 'Unique identifier from platform (can be shop_id for some platforms)',
     },
 
-    // Shop Information
+    // Shop reference (FK -> shops.id)
     shop_id: {
-      type: DataTypes.STRING(255),
-      allowNull: true,
-    },
-    shop_code: {
-      type: DataTypes.STRING(255),
-      allowNull: true,
-    },
-    shop_name: {
-      type: DataTypes.STRING(500),
-      allowNull: true,
-    },
-    shop_cipher: {
-      type: DataTypes.STRING(255),
-      allowNull: true,
-    },
-    shop_region: {
-      type: DataTypes.STRING(100),
-      allowNull: true,
-    },
-
-    // Seller Information
-    seller_id: {
-      type: DataTypes.STRING(255),
-      allowNull: true,
-    },
-    seller_name: {
-      type: DataTypes.STRING(500),
-      allowNull: true,
-    },
-    seller_type: {
-      type: DataTypes.STRING(100),
-      allowNull: true,
-    },
-
-    // System Fields
-    region: {
-      type: DataTypes.STRING(100),
-      allowNull: true,
-    },
-    user_type: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      comment: "0=Seller, 1=Creator, 3=Partner",
+      references: {
+        model: "shops",
+        key: "id",
+      },
     },
     granted_scopes: {
       type: DataTypes.TEXT,
@@ -126,6 +88,62 @@ const Token = sequelize.define(
     expire_at: {
       type: DataTypes.DATE,
       allowNull: true,
+    },
+
+    // Virtual fields from Shop (for backward compatibility in controllers)
+    shop_name: {
+      type: DataTypes.VIRTUAL,
+      get() {
+        return this.shop ? this.shop.shop_name : null;
+      },
+    },
+    shop_code: {
+      type: DataTypes.VIRTUAL,
+      get() {
+        return this.shop ? this.shop.shop_code : null;
+      },
+    },
+    shop_cipher: {
+      type: DataTypes.VIRTUAL,
+      get() {
+        return this.shop ? this.shop.shop_cipher : null;
+      },
+    },
+    shop_region: {
+      type: DataTypes.VIRTUAL,
+      get() {
+        return this.shop ? this.shop.shop_region : null;
+      },
+    },
+    seller_id: {
+      type: DataTypes.VIRTUAL,
+      get() {
+        return this.shop ? this.shop.seller_id : null;
+      },
+    },
+    seller_name: {
+      type: DataTypes.VIRTUAL,
+      get() {
+        return this.shop ? this.shop.seller_name : null;
+      },
+    },
+    seller_type: {
+      type: DataTypes.VIRTUAL,
+      get() {
+        return this.shop ? this.shop.seller_type : null;
+      },
+    },
+    region: {
+      type: DataTypes.VIRTUAL,
+      get() {
+        return this.shop ? this.shop.region : null;
+      },
+    },
+    marketplace_shop_id: {
+      type: DataTypes.VIRTUAL,
+      get() {
+        return this.shop ? this.shop.marketplace_shop_id : null;
+      },
     },
   },
   {
@@ -153,8 +171,19 @@ const Token = sequelize.define(
         name: "shop_id_platform_index",
       },
     ],
+    defaultScope: {
+      include: [
+        {
+          model: Shop,
+          as: "shop",
+          required: false,
+        },
+      ],
+    },
   },
 );
+
+Token.belongsTo(Shop, { foreignKey: "shop_id", as: "shop" });
 
 //  UPDATED: Static methods dengan user_id filter
 Token.findByOpenId = function (openId, userId = null) {
@@ -164,9 +193,39 @@ Token.findByOpenId = function (openId, userId = null) {
   return this.findOne({ where });
 };
 
-Token.findByShopId = function (shopId, userId = null) {
-  const where = { shop_id: shopId };
+Token.findByShopId = async function (shopId, userId = null, platform = null) {
+  if (shopId === null || shopId === undefined) return null;
+
+  let shopRecord = null;
+  const shopIdString = shopId.toString();
+
+  if (platform) {
+    shopRecord = await Shop.findOne({
+      where: {
+        marketplace_platform: platform,
+        marketplace_shop_id: shopIdString,
+      },
+    });
+  }
+
+  if (!shopRecord) {
+    const parsedId = Number.parseInt(shopId, 10);
+    if (!Number.isNaN(parsedId)) {
+      shopRecord = await Shop.findByPk(parsedId);
+    }
+  }
+
+  if (!shopRecord && !platform) {
+    shopRecord = await Shop.findOne({
+      where: { marketplace_shop_id: shopIdString },
+    });
+  }
+
+  if (!shopRecord) return null;
+
+  const where = { shop_id: shopRecord.id };
   if (userId) where.user_id = userId;
+  if (platform) where.platform = platform;
 
   return this.findOne({ where });
 };
